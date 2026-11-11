@@ -1,17 +1,6 @@
----
-AIGC:
-    Label: "1"
-    ContentProducer: 001191440300708461136T1XGW3
-    ProduceID: 8ed0079d26025081b66058e9c4f6e911_b94bb44bdda711f1bc42525400638852
-    ReservedCode1: AFBMQmrpWcIueC1PyiizsZxDrJjrxWvUd0+BiVKnl6CId6J7r7lqiLOfcrV1J7gxAZ9tK0oeLJ18W1GRvYYVzXt8lW3uV2//nRFmZr67LjgEt/8evQIenQR7SDTHb9Z2VP2hdkTvJm10FfXxfpH11kk87zFhjOZPcXjdOSVwcggdE75nfadvKwBIRhk=
-    ContentPropagator: 001191440300708461136T1XGW3
-    PropagateID: 8ed0079d26025081b66058e9c4f6e911_b94bb44bdda711f1bc42525400638852
-    ReservedCode2: AFBMQmrpWcIueC1PyiizsZxDrJjrxWvUd0+BiVKnl6CId6J7r7lqiLOfcrV1J7gxAZ9tK0oeLJ18W1GRvYYVzXt8lW3uV2//nRFmZr67LjgEt/8evQIenQR7SDTHb9Z2VP2hdkTvJm10FfXxfpH11kk87zFhjOZPcXjdOSVwcggdE75nfadvKwBIRhk=
----
-
 # MiraLite
 
-仿 MIRA Player 形态的 IPTV + 本地媒体库聚合播放器（Tauri v2 + React 19）。
+ IPTV + 本地媒体库聚合播放器（Tauri v2 + React 19）。
 内置 CAT/TVBox spider 引擎，可直接浏览、搜索并播放聚合站点的影视资源。
 
 ## 技术栈
