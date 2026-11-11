@@ -6,12 +6,15 @@ import { viaProxy } from '../lib/cat'
 /** 全屏播放层：原生 HLS 优先，hls.js 兜底，失败回调交给上层换线 */
 export default function PlayerOverlay({
   url,
+  header,
   tip,
   onFail,
   onSwitch,
   onClose,
 }: {
   url: string
+  /** CAT /play 返回的鉴权 header，透传给本地代理 */
+  header?: Record<string, string> | null
   tip?: string | null
   onFail?: () => void
   onSwitch?: () => void
@@ -23,7 +26,7 @@ export default function PlayerOverlay({
     const el = ref.current
     if (!el) return
     setPerr(null)
-    const src = viaProxy(url)
+    const src = viaProxy(url, header)
     let fired = false
     let hls: Hls | null = null
     let onNativeErr: (() => void) | null = null
@@ -39,7 +42,7 @@ export default function PlayerOverlay({
       hls = null
     }
 
-    const useHls = () => {
+    const startHls = () => {
       if (!Hls.isSupported()) {
         setPerr('这个地址浏览器解不了，可能已过期')
         return
@@ -73,21 +76,23 @@ export default function PlayerOverlay({
       onNativeErr = () => {
         el.removeEventListener('error', onNativeErr as EventListener)
         onNativeErr = null
-        useHls()
+        startHls()
       }
       el.addEventListener('error', onNativeErr)
     } else if (isM3u8) {
-      useHls()
+      startHls()
     } else {
       el.src = src
       onNativeErr = () => setPerr('这个地址播不了，可能已过期或需要特定客户端')
       el.addEventListener('error', onNativeErr)
     }
 
-    // 兜底：12 秒还没出画面就认为这条线路不行
+    // 兜底：只有完全没拿到任何数据（HAVE_NOTHING）才判定线路不通。
+    // 直播流 currentTime 可能恒为 0、慢启动流 12 秒内到不了 HAVE_FUTURE_DATA，
+    // 旧逻辑（8 秒 + currentTime===0）会把正常流误判为失败并自动换线。
     const wd = window.setTimeout(() => {
-      if (el.readyState < 3 || el.currentTime === 0) fail()
-    }, 8000)
+      if (!hls && el.readyState === HTMLMediaElement.HAVE_NOTHING) fail()
+    }, 12000)
 
     void el.play().catch(() => undefined)
     return () => {
@@ -95,7 +100,7 @@ export default function PlayerOverlay({
       if (onNativeErr) el.removeEventListener('error', onNativeErr)
       destroyHls()
     }
-  }, [url])
+  }, [url, header])
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black">

@@ -125,6 +125,12 @@ export interface CatPlayResult {
   msg?: string
 }
 
+/** 交给播放器的完整播放源：直链 + 站点返回的鉴权 header */
+export interface PlayingSource {
+  url: string
+  header?: Record<string, string>
+}
+
 export function catPlay(site: CatSite, flag: string, id: string) {
   return call<CatPlayResult>(`${base(site)}/play`, { flag, id })
 }
@@ -244,9 +250,14 @@ export const STREAM_PROXY_PORT = 9989
  * 1) 代理层会补 Referer / Safari UA，绕过直链站点的 403 防盗链
  * 2) 本地 http 源不受 CORS 与 ATS 限制
  * 3) m3u8 会被逐层改写，多级嵌套也能播
+ * 4) CAT /play 返回的鉴权 header（Cookie/Referer）透传给代理，否则需登录的直链必 403
  */
-export function viaProxy(url: string): string {
+export function viaProxy(url: string, header?: Record<string, string> | null): string {
   if (!url) return url
   if (url.startsWith(`http://127.0.0.1:${STREAM_PROXY_PORT}`)) return url
-  return `http://127.0.0.1:${STREAM_PROXY_PORT}/s?u=${encodeURIComponent(url)}`
+  let s = `http://127.0.0.1:${STREAM_PROXY_PORT}/s?u=${encodeURIComponent(url)}`
+  if (header && Object.keys(header).length > 0) {
+    s += `&h=${encodeURIComponent(JSON.stringify(header))}`
+  }
+  return s
 }

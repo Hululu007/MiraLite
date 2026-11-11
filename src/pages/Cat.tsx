@@ -34,6 +34,7 @@ import {
   type CatSite,
   type CatVod,
   type PanProvider,
+  type PlayingSource,
 } from '../lib/cat'
 import { CAT_URL_KEY as URL_KEY, DEFAULT_CAT_URL as DEFAULT_URL } from '../lib/catSession'
 
@@ -58,7 +59,7 @@ export default function CatPage() {
 
   const [detail, setDetail] = useState<CatVod | null>(null)
   const [lineIndex, setLineIndex] = useState(0)
-  const [playing, setPlaying] = useState<string | null>(null)
+  const [playing, setPlaying] = useState<PlayingSource | null>(null)
   const [playTip, setPlayTip] = useState<string | null>(null)
   const playQueue = useRef<{ flag: string; id: string }[]>([])
   const autoBusy = useRef(false)
@@ -289,7 +290,7 @@ export default function CatPage() {
         try {
           const r = await catPlay(cur, next.flag, next.id)
           if (r.url && r.url.startsWith('http')) {
-            setPlaying(r.url)
+            setPlaying({ url: r.url, header: r.header })
             setPlayTip(null)
             return
           }
@@ -313,7 +314,7 @@ export default function CatPage() {
       try {
         const r = await catPlay(s, flag, id)
         if (!r.url) throw new Error(r.msg || '这个线路没有返回可用地址')
-        if (r.url.startsWith('http')) setPlaying(r.url)
+        if (r.url.startsWith('http')) setPlaying({ url: r.url, header: r.header })
         else throw new Error(`该线路返回的是可解析片段，MiraLite 暂不支持：${r.url.slice(0, 60)}`)
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
@@ -567,7 +568,8 @@ export default function CatPage() {
 
       {playing && (
         <PlayerOverlay
-          url={playing}
+          url={playing.url}
+          header={playing.header}
           tip={playTip}
           onFail={() => void autoNext()}
           onClose={() => {

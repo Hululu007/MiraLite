@@ -1,7 +1,7 @@
 //! 本地串流代理：解决网盘直链/直链站点的 403、跨域、UA 校验问题。
 //!
-//! 用法：GET http://127.0.0.1:9989/s?u=<encode 后的原始地址>
-//!  - 若上游返回 m3u8 文本，则把里面所有 URI 改写成代理地址（多层嵌套也能逐层剥）
+//! 用法：GET http://127.0.0.1:9989/s?u=<encode 后的原始地址>&h=<encode 后的 header JSON>
+//!  - 若上游返回 m3u8 文本，则把里面所有 URI 改写成代理地址（多层嵌套也能逐层剥），并透传鉴权 header
 //!  - 若上游返回分片/视频，则流式透传，保留 Range / Content-Range，支持拖动进度
 use axum::{
     Router,
@@ -12,7 +12,9 @@ use axum::{
     routing::get,
 };
 use futures_util::StreamExt;
+use reqwest::header::{HeaderMap as ReqHeaderMap, HeaderName};
 use serde::Deserialize;
+use std::collections::HashMap;
 use std::net::{Ipv4Addr, SocketAddr};
 
 pub const PROXY_PORT: u16 = 9989;
@@ -22,6 +24,41 @@ const UA: &str = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/60
 #[derive(Deserialize)]
 struct ProxyQ {
     u: String,
+    /// CAT /play 返回的鉴权 header（JSON 对象），需透传给上游与每个 m3u8 分片
+    h: Option<String>,
+}
+
+/// 解析前端透传的 header。过滤掉会破坏流式转发 / 有安全风险的 hop-by-hop 头。
+fn extra_headers(raw: Option<&str>) -> ReqHeaderMap {
+    let mut out = ReqHeaderMap::new();
+    let raw = match raw {
+        Some(r) if !r.is_empty() => r,
+        _ => return out,
+    };
+    const BLOCKED: &[&str] = &[
+        "host", "connection", "content-length", "transfer-encoding",
+        "accept-encoding", "range", "te", "trailer", "upgrade", "keep-alive",
+        "proxy-authorization", "proxy-authenticate",
+    ];
+    let map: HashMap<String, String> = match serde_json::from_str(raw) {
+        Ok(m) => m,
+        Err(_) => {
+            log::warn!("[proxy] 忽略非法 header 参数");
+            return out;
+        }
+    };
+    for (k, v) in map {
+        if BLOCKED.contains(&k.to_ascii_lowercase().as_str()) {
+            continue;
+        }
+        if let (Ok(name), Ok(val)) = (
+            HeaderName::from_bytes(k.as_bytes()),
+            HeaderValue::from_str(&v),
+        ) {
+            out.insert(name, val);
+        }
+    }
+    out
 }
 
 fn origin_of(u: &str) -> String {
@@ -31,10 +68,17 @@ fn origin_of(u: &str) -> String {
     }
 }
 
-fn wrap(u: &str) -> String {
+fn wrap(u: &str, h: Option<&str>) -> String {
     // 必须回绝对地址：WKWebView 里页面 origin 是 tauri://localhost，
     // 相对路径 /s?u=... 会被解析到该 origin 上导致分片全 404（fragParsingError）
-    format!("http://127.0.0.1:{PROXY_PORT}/s?u={}", urlencoding::encode(u))
+    let mut s = format!("http://127.0.0.1:{PROXY_PORT}/s?u={}", urlencoding::encode(u));
+    // 鉴权 header 必须带到每个分片，否则主列表 200、分片全 403
+    if let Some(hh) = h {
+        if !hh.is_empty() {
+            s.push_str(&format!("&h={}", urlencoding::encode(hh)));
+        }
+    }
+    s
 }
 
 fn absolutize(base: &str, rel: &str) -> String {
@@ -48,7 +92,7 @@ fn absolutize(base: &str, rel: &str) -> String {
 }
 
 /// 把 m3u8 里所有 URI（含 EXT-X-KEY / EXT-X-MAP 的属性值）改写为走代理
-fn rewrite_m3u8(text: &str, base: &str) -> String {
+fn rewrite_m3u8(text: &str, base: &str, h: Option<&str>) -> String {
     let mut out = String::with_capacity(text.len() + 512);
     for line in text.lines() {
         let t = line.trim();
@@ -56,8 +100,7 @@ fn rewrite_m3u8(text: &str, base: &str) -> String {
             out.push('\n');
             continue;
         }
-        if let Some(rest) = t.strip_prefix('#') {
-            let _ = rest;
+        if t.starts_with('#') {
             if t.contains("URI=\"") {
                 let mut rebuilt = String::new();
                 let mut s = t;
@@ -67,7 +110,7 @@ fn rewrite_m3u8(text: &str, base: &str) -> String {
                     if let Some(j) = after.find('"') {
                         let raw = &after[..j];
                         let full = absolutize(base, raw);
-                        rebuilt.push_str(&wrap(&full));
+                        rebuilt.push_str(&wrap(&full, h));
                         rebuilt.push('"');
                         s = &after[j + 1..];
                     } else {
@@ -84,7 +127,7 @@ fn rewrite_m3u8(text: &str, base: &str) -> String {
             out.push('\n');
         } else {
             let full = absolutize(base, t);
-            out.push_str(&wrap(&full));
+            out.push_str(&wrap(&full, h));
             out.push('\n');
         }
     }
@@ -105,16 +148,31 @@ async fn stream_handler(Query(q): Query<ProxyQ>, headers: HeaderMap) -> Response
         Err(e) => return (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
     };
 
-    let mut rb = client
-        .get(&target)
-        .header(reqwest::header::USER_AGENT, UA)
-        .header(reqwest::header::REFERER, origin_of(&target))
-        // 要求上游别压缩：压缩后 Content-Length 与实际字节数对不上，
-        // hls.js 会按头长度切分片，进而报 fragParsingError
-        .header(reqwest::header::ACCEPT_ENCODING, "identity")
-        .header(reqwest::header::ACCEPT, "*/*");
+    // 默认头；CAT /play 返回的 header 覆盖同名项（需要 Cookie + 特定 Referer/UA）
+    let mut req_headers = ReqHeaderMap::new();
+    if let Ok(v) = HeaderValue::from_str(UA) {
+        req_headers.insert(reqwest::header::USER_AGENT, v);
+    }
+    if let Ok(v) = HeaderValue::from_str(&origin_of(&target)) {
+        req_headers.insert(reqwest::header::REFERER, v);
+    }
+    // 要求上游别压缩：压缩后 Content-Length 与实际字节数对不上，
+    // hls.js 会按头长度切分片，进而报 fragParsingError
+    req_headers.insert(
+        reqwest::header::ACCEPT_ENCODING,
+        HeaderValue::from_static("identity"),
+    );
+    req_headers.insert(reqwest::header::ACCEPT, HeaderValue::from_static("*/*"));
+    // 站点鉴权 header 覆盖默认（HeaderMap::insert 语义为替换，不会追加重复 UA/Referer）
+    for (name, val) in extra_headers(q.h.as_deref()) {
+        if let Some(n) = name {
+            req_headers.insert(n, val);
+        }
+    }
 
-    // 透传 Range，保证能拖进度条
+    let mut rb = client.get(&target).headers(req_headers);
+
+    // 透传 Range，保证能拖进度条（客户端 Range 优先；extra_headers 已排除 range）
     if let Some(r) = headers.get(header::RANGE).and_then(|v| v.to_str().ok()) {
         rb = rb.header(reqwest::header::RANGE, r.to_string());
     }
@@ -122,11 +180,7 @@ async fn stream_handler(Query(q): Query<ProxyQ>, headers: HeaderMap) -> Response
     let resp = match rb.send().await {
         Ok(r) => r,
         Err(e) => {
-            return (
-                StatusCode::BAD_GATEWAY,
-                format!("上游请求失败: {e}"),
-            )
-                .into_response();
+            return (StatusCode::BAD_GATEWAY, format!("上游请求失败: {e}")).into_response();
         }
     };
 
@@ -151,7 +205,12 @@ async fn stream_handler(Query(q): Query<ProxyQ>, headers: HeaderMap) -> Response
         || target.contains(".m3u8")
         || target.contains(".m3u");
 
-    log::info!("[proxy] {} -> {} ({})", status.as_u16(), if is_playlist { "playlist" } else { "segment" }, target);
+    log::info!(
+        "[proxy] {} -> {} ({})",
+        status.as_u16(),
+        if is_playlist { "playlist" } else { "segment" },
+        target
+    );
 
     let mut out = axum::http::Response::builder()
         .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
@@ -167,7 +226,7 @@ async fn stream_handler(Query(q): Query<ProxyQ>, headers: HeaderMap) -> Response
         if !body.contains("#EXTM3U") {
             return (StatusCode::BAD_GATEWAY, "上游不是 m3u8").into_response();
         }
-        let rewritten = rewrite_m3u8(&body, &target);
+        let rewritten = rewrite_m3u8(&body, &target, q.h.as_deref());
         return out
             .header(header::CONTENT_TYPE, "application/vnd.apple.mpegurl")
             .body(Body::from(rewritten))

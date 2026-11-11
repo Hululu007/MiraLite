@@ -21,6 +21,7 @@ import {
   pickBestLine,
   type CatSite,
   type CatVod,
+  type PlayingSource,
 } from '../lib/cat'
 import { ensureSites, recallVod, withTimeout } from '../lib/catSession'
 
@@ -38,7 +39,7 @@ export default function CatDetailPage() {
   const [busy, setBusy] = useState(false)
   const [needPanLogin, setNeedPanLogin] = useState(false)
 
-  const [playing, setPlaying] = useState<string | null>(null)
+  const [playing, setPlaying] = useState<PlayingSource | null>(null)
   const [exhausted, setExhausted] = useState(false)
   const [tip, setTip] = useState<string | null>(null)
   const queue = useRef<{ flag: string; id: string }[]>([])
@@ -122,7 +123,7 @@ export default function CatDetailPage() {
         try {
           const r = await catPlay(site, next.flag, next.id)
           if (r.url && r.url.startsWith('http')) {
-            setPlaying(r.url)
+            setPlaying({ url: r.url, header: r.header })
             setTip(null)
             return
           }
@@ -150,7 +151,7 @@ export default function CatDetailPage() {
       try {
         const r = await catPlay(site, flag, id)
         if (!r.url) throw new Error(r.msg || '这条线路没有返回可用地址')
-        if (r.url.startsWith('http')) setPlaying(r.url)
+        if (r.url.startsWith('http')) setPlaying({ url: r.url, header: r.header })
         else throw new Error(`该线路返回的是可解析片段，暂时不支持：${r.url.slice(0, 60)}`)
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
@@ -339,7 +340,8 @@ export default function CatDetailPage() {
 
       {playing && (
         <PlayerOverlay
-          url={playing}
+          url={playing.url}
+          header={playing.header}
           tip={tip}
           onFail={() => void autoNext()}
           onSwitch={exhausted ? goSearch : undefined}
