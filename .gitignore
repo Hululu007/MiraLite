@@ -12,6 +12,11 @@ dist
 dist-ssr
 *.local
 
+# 本地打包备份与临时产物（不入库）
+.backup/
+*.old
+*.old.*
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

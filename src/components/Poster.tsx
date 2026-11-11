@@ -20,7 +20,7 @@ export default function Poster({ item, width = 168, onOpen, progress, badge }: P
   return (
     <button
       onClick={() => onOpen?.(item)}
-      className="group relative shrink-0 overflow-hidden rounded-2xl text-left transition-transform duration-300 ease-out hover:z-10 hover:scale-[1.045] focus:outline-none"
+      className="glass-poster group relative shrink-0 overflow-hidden rounded-2xl text-left transition-transform duration-300 ease-out hover:z-10 hover:scale-[1.045] focus:outline-none"
       style={{ width, height: h }}
     >
       <div
@@ -45,6 +45,7 @@ export default function Poster({ item, width = 168, onOpen, progress, badge }: P
       </div>
 
       <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/85 via-black/35 to-transparent" />
+      <div className="glass-sheen" />
 
       {badge && (
         <span className="absolute left-2 top-2 rounded-md bg-gold/90 px-1.5 py-0.5 text-[10px] font-semibold text-black">

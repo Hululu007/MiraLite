@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import {
   AlertCircle,
@@ -8,8 +8,10 @@ import {
   Play,
   RefreshCw,
   Search,
+  Star,
 } from 'lucide-react'
 import PlayerOverlay from '../components/PlayerOverlay'
+import { trackChase, useChase } from '../lib/chase'
 import {
   catDetail,
   catOpenConfig,
@@ -23,7 +25,7 @@ import {
   type CatVod,
   type PlayingSource,
 } from '../lib/cat'
-import { ensureSites, recallVod, withTimeout } from '../lib/catSession'
+import { cacheKey, ensureSites, recallVod, withTimeout } from '../lib/catSession'
 
 export default function CatDetailPage() {
   const [params] = useSearchParams()
@@ -48,6 +50,10 @@ export default function CatDetailPage() {
   // 站点对象必须来自 config（带着 /spider/xxx/3 这种 api 路径），自己按 key 拼会 404
   const [site, setSite] = useState<CatSite | null>(null)
   const siteName = cached?.siteName ?? siteKey
+
+  // 追剧清单：播过的剧自动记下；详情页也能手动加入
+  const chase = useChase()
+  const inChase = chase.some((e) => e.key === cacheKey(siteKey, vodId))
 
   useEffect(() => {
     let alive = true
@@ -85,7 +91,7 @@ export default function CatDetailPage() {
     void load()
   }, [load])
 
-  const lines = vod ? parsePlayLines(vod) : []
+  const lines = useMemo(() => (vod ? parsePlayLines(vod) : []), [vod])
   const line = lines[lineIndex]
   const first = line?.episodes[0]
 
@@ -148,6 +154,16 @@ export default function CatDetailPage() {
       setNeedPanLogin(false)
       setBusy(true)
       buildQueue(flag, id)
+      if (vod) {
+        const curLine = lines.find((l) => l.flag === flag)
+        trackChase({
+          siteKey,
+          siteName: site?.name || siteName,
+          vod,
+          episode: curLine?.episodes.find((e) => e.id === id)?.name,
+          episodeCount: curLine?.episodes.length,
+        })
+      }
       try {
         const r = await catPlay(site, flag, id)
         if (!r.url) throw new Error(r.msg || '这条线路没有返回可用地址')
@@ -164,7 +180,7 @@ export default function CatDetailPage() {
         setBusy(false)
       }
     },
-    [site, siteKey, buildQueue],
+    [site, siteKey, siteName, vod, lines, buildQueue],
   )
 
   const goSearch = () => {
@@ -183,39 +199,54 @@ export default function CatDetailPage() {
             className="absolute inset-0 h-full w-full scale-110 object-cover opacity-25 blur-[6px]"
           />
         )}
-        <div className="absolute inset-0 bg-gradient-to-r from-base via-base/70 to-base/20" />
-        <div className="absolute inset-0 bg-gradient-to-t from-base via-transparent to-base/30" />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#07070c]/95 via-[#07070c]/65 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#07070c]/92 via-transparent to-[#07070c]/25" />
 
         <button
           onClick={() => navigate(-1)}
-          className="absolute left-10 top-6 z-10 flex items-center gap-1.5 rounded-lg bg-black/30 px-2.5 py-1.5 text-[11.5px] text-white/80 backdrop-blur transition hover:bg-black/50"
+          className="glass-btn absolute left-10 top-6 z-10 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11.5px] text-white/85"
         >
           <ArrowLeft size={13} /> 返回
         </button>
 
-        <div className="relative flex h-full items-center gap-7 px-10 pt-6">
-          <div className="w-[172px] shrink-0">
-            <PosterArt name={vod?.vod_name ?? '加载中'} pic={vod?.vod_pic} width={172} />
-          </div>
-          <div className="min-w-0 flex-1 pb-2">
-            <h1 className="truncate text-[26px] font-semibold leading-tight tracking-tight">
-              {vod?.vod_name ?? '正在读取详情…'}
-            </h1>
-            <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-muted">
-              <span className="rounded bg-gold/15 px-1.5 py-0.5 text-gold">{siteName}</span>
-              {vod?.vod_year && <span>{vod.vod_year}</span>}
-              {vod?.vod_area && <span>{vod.vod_area}</span>}
-              {vod?.vod_remarks && <span>{vod.vod_remarks}</span>}
-              {lines.length > 0 && <span>{lines.length} 条线路</span>}
+        <div className="relative flex h-full items-center px-10 pt-3">
+          <div className="glass-panel flex w-full items-center gap-7 rounded-2xl px-6 py-4">
+            <div className="w-[172px] shrink-0">
+              <PosterArt name={vod?.vod_name ?? '加载中'} pic={vod?.vod_pic} width={172} />
             </div>
-            {vod?.vod_actor && (
-              <p className="mt-2 line-clamp-1 text-[11.5px] text-muted">主演：{vod.vod_actor}</p>
-            )}
-            {vod?.vod_content && (
-              <p className="mt-3 line-clamp-3 max-w-[620px] text-[12px] leading-relaxed text-fg/65">
-                {vod.vod_content}
-              </p>
-            )}
+            <div className="min-w-0 flex-1 pb-1">
+              <h1 className="truncate text-[26px] font-semibold leading-tight tracking-tight">
+                {vod?.vod_name ?? '正在读取详情…'}
+              </h1>
+              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-muted">
+                <span className="glass-chip rounded-full px-2 py-0.5 text-[10.5px] text-gold">{siteName}</span>
+                {vod?.vod_year && <span>{vod.vod_year}</span>}
+                {vod?.vod_area && <span>{vod.vod_area}</span>}
+                {vod?.vod_remarks && <span>{vod.vod_remarks}</span>}
+                {lines.length > 0 && <span>{lines.length} 条线路</span>}
+              </div>
+              {vod?.vod_actor && (
+                <p className="mt-2 line-clamp-1 text-[11.5px] text-muted">主演：{vod.vod_actor}</p>
+              )}
+              {vod?.vod_content && (
+                <p className="mt-3 line-clamp-3 max-w-[620px] text-[12px] leading-relaxed text-fg/65">
+                  {vod.vod_content}
+                </p>
+              )}
+            </div>
+            <button
+              disabled={!vod}
+              onClick={() => {
+                if (!vod) return
+                if (inChase) navigate('/chase')
+                else trackChase({ siteKey, siteName: site?.name || siteName, vod })
+              }}
+              title={inChase ? '去追剧清单查看' : '加入追剧清单'}
+              className="glass-btn flex shrink-0 items-center gap-1.5 self-start rounded-lg px-3 py-2 text-[11.5px] text-muted transition hover:text-gold disabled:opacity-50"
+            >
+              <Star size={14} fill={inChase ? 'currentColor' : 'none'} />
+              {inChase ? '已在追剧' : '加入追剧'}
+            </button>
           </div>
         </div>
       </section>
@@ -227,7 +258,7 @@ export default function CatDetailPage() {
             <button
               disabled={busy}
               onClick={() => void play(line.flag, first.id)}
-              className="group flex w-[300px] items-center justify-center gap-2.5 rounded-2xl bg-gold py-3.5 text-[15px] font-semibold text-black shadow-[0_10px_36px_-12px_rgba(232,180,76,0.85)] transition hover:brightness-110 disabled:opacity-65"
+              className="glass-primary group flex w-[300px] items-center justify-center gap-2.5 rounded-2xl py-3.5 text-[15px] font-semibold"
             >
               {busy ? (
                 <Loader2 size={18} className="animate-spin" />
@@ -242,13 +273,13 @@ export default function CatDetailPage() {
             </p>
           </>
         ) : (
-          <div className="w-[420px] rounded-2xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-center">
+          <div className="glass-warn w-[420px] rounded-2xl px-4 py-3 text-center">
             <p className="text-[11.5px] leading-relaxed text-amber-200/90">
               {loading ? '正在解析这部片的播放线路…' : `「${siteName}」这个条目没有解析出可播线路`}
             </p>
             <button
               onClick={goSearch}
-              className="mt-2.5 inline-flex items-center gap-1.5 rounded-lg bg-gold px-3.5 py-2 text-[12px] font-semibold text-black transition hover:brightness-110"
+              className="glass-primary mt-2.5 inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[12px] font-semibold"
             >
               <Search size={12} /> 去其它站点搜这部片
             </button>
@@ -257,14 +288,14 @@ export default function CatDetailPage() {
       </section>
 
       {err && (
-        <div className="mx-10 mt-4 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/8 px-3 py-2 text-[11.5px] leading-relaxed text-red-300">
+        <div className="glass-alert mx-10 mt-4 flex items-start gap-2 rounded-lg px-3 py-2 text-[11.5px] leading-relaxed text-red-200">
           <AlertCircle size={13} className="mt-0.5 shrink-0" />
           <div className="min-w-0">
             <span>{err}</span>
             {needPanLogin && (
               <button
                 onClick={() => void catOpenConfig()}
-                className="mt-2 flex items-center gap-1.5 rounded-md bg-gold px-2.5 py-1 text-[11px] font-semibold text-black hover:brightness-110"
+                className="glass-primary mt-2 flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-semibold"
               >
                 <KeyRound size={11} /> 去配置中心登录网盘
               </button>
@@ -288,10 +319,8 @@ export default function CatDetailPage() {
                 <button
                   key={l.flag + i}
                   onClick={() => setLineIndex(i)}
-                  className={`rounded-md border px-2.5 py-1 text-[11px] transition ${
-                    i === lineIndex
-                      ? 'border-gold/55 bg-gold/10 text-gold'
-                      : 'border-line/60 text-muted hover:text-fg'
+                  className={`glass-chip rounded-md px-2.5 py-1 text-[11px] ${
+                    i === lineIndex ? 'is-active text-gold' : 'text-muted'
                   }`}
                   title={l.flag}
                 >
@@ -311,7 +340,7 @@ export default function CatDetailPage() {
                     key={ep.id + i}
                     disabled={busy}
                     onClick={() => void play(line.flag, ep.id)}
-                    className="truncate rounded-lg border border-line/60 bg-surface/40 px-2 py-1.5 text-[11px] text-muted transition hover:border-gold/50 hover:text-gold disabled:opacity-50"
+                    className="glass-chip truncate rounded-lg px-2 py-1.5 text-[11px] text-muted hover:text-gold disabled:opacity-50"
                     title={ep.name}
                   >
                     {ep.name.length > 10 ? ep.name.slice(0, 10) : ep.name}
@@ -326,13 +355,13 @@ export default function CatDetailPage() {
       <section className="mt-7 flex gap-2 px-10">
         <button
           onClick={() => void load()}
-          className="flex items-center gap-1.5 rounded-lg border border-line/70 px-3 py-1.5 text-[11.5px] text-muted transition hover:text-fg"
+          className="glass-btn flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px] text-muted"
         >
           <RefreshCw size={12} className={loading ? 'animate-spin' : ''} /> 刷新详情
         </button>
         <button
           onClick={goSearch}
-          className="flex items-center gap-1.5 rounded-lg border border-line/70 px-3 py-1.5 text-[11.5px] text-muted transition hover:text-gold"
+          className="glass-btn flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[11.5px] text-muted hover:text-gold"
         >
           <Search size={12} /> 换个站点找这部片
         </button>
@@ -363,7 +392,7 @@ function PosterArt({ name, pic, width }: { name: string; pic?: string; width: nu
   const hue = (name.charCodeAt(0) * 37 + (name.charCodeAt(1) || 11) * 13) % 360
   return (
     <div
-      className="overflow-hidden rounded-xl border border-white/10 shadow-[0_18px_50px_-18px_rgba(0,0,0,0.9)]"
+      className="glass-poster overflow-hidden rounded-xl"
       style={{ width, height: Math.round(width * 1.5) }}
     >
       {pic && !broken ? (

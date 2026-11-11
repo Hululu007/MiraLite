@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import PlayerOverlay from '../components/PlayerOverlay'
+import { trackChase } from '../lib/chase'
 import {
   AlertCircle,
   ChevronLeft,
@@ -15,6 +16,7 @@ import {
 import {
   catCategory,
   catConfig,
+  catActiveUrl,
   catDetail,
   catHome,
   catOpenConfig,
@@ -36,12 +38,12 @@ import {
   type PanProvider,
   type PlayingSource,
 } from '../lib/cat'
-import { CAT_URL_KEY as URL_KEY, DEFAULT_CAT_URL as DEFAULT_URL } from '../lib/catSession'
+import { activeSubscription, addSubscription } from '../lib/catSession'
 
 
 export default function CatPage() {
   const [ready, setReady] = useState<boolean | null>(null)
-  const [url, setUrl] = useState(DEFAULT_URL)
+  const [url, setUrl] = useState(() => activeSubscription()?.url ?? '')
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState<string | null>(null)
 
@@ -100,7 +102,12 @@ export default function CatPage() {
       setSites(cfg)
       setReady(true)
       setErr(null)
-      localStorage.setItem(URL_KEY, target)
+      // 顺手存进订阅列表，设置页里也能看到、切换
+      try {
+        addSubscription(target)
+      } catch {
+        /* 已存在就忽略 */
+      }
       void boot
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
@@ -120,15 +127,17 @@ export default function CatPage() {
     void (async () => {
       try {
         const port = await catStatus()
-        if (port) {
+        const running = await catActiveUrl()
+        if (port && running) {
+          setUrl(running)
           setSites(await catConfig())
           setReady(true)
           return
         }
-        const saved = localStorage.getItem(URL_KEY)
+        const saved = activeSubscription()
         if (saved) {
-          setUrl(saved)
-          await connectWith(saved)
+          setUrl(saved.url)
+          await connectWith(saved.url)
         } else {
           setReady(false)
         }
@@ -311,6 +320,16 @@ export default function CatPage() {
       buildQueue(flag, id)
       setNeedPanLogin(false)
       setBusy(true)
+      if (detail) {
+        const curLine = parsePlayLines(detail).find((l) => l.flag === flag)
+        trackChase({
+          siteKey: s.key,
+          siteName: s.name,
+          vod: detail,
+          episode: curLine?.episodes.find((e) => e.id === id)?.name,
+          episodeCount: curLine?.episodes.length,
+        })
+      }
       try {
         const r = await catPlay(s, flag, id)
         if (!r.url) throw new Error(r.msg || '这个线路没有返回可用地址')
@@ -329,7 +348,7 @@ export default function CatPage() {
         setBusy(false)
       }
     },
-    [refreshPan, buildQueue],
+    [refreshPan, buildQueue, detail],
   )
 
   const freeCount = sites.filter((s) => !panKeys.has(s.key)).length
@@ -346,25 +365,28 @@ export default function CatPage() {
   if (!ready) {
     return (
       <Centered>
-        <div className="w-[520px]">
+        <div className="glass-panel w-[520px] rounded-2xl p-6">
           <h1 className="text-[20px] font-semibold tracking-tight">CAT 接口</h1>
           <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
             这类源不是播放列表，而是一整套 spider 运行时。填入订阅地址后，MiraLite 会下载并缓存它的
             index.js，用本机 Node 拉起本地服务，再从里面取站点与片单。
           </p>
+          <p className="mt-2 text-[11.5px] text-gold/80">
+            现在可以在「设置 → 片源 → 影视订阅」里保存多个订阅源并随时切换。这里连接只影响当前会话。
+          </p>
           <label className="mt-5 block">
-            <span className="mb-1.5 block text-[11.5px] text-muted">订阅地址</span>
+            <span className="mb-1.5 block text-[11.5px] text-muted">临时订阅地址</span>
             <input
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder={DEFAULT_URL}
-              className="h-9 w-full rounded-lg border border-line/70 bg-surface-2/70 px-3 text-[12.5px] text-fg placeholder:text-muted/60 focus:border-gold/50 focus:outline-none"
+              placeholder="https://.../index.js.md5"
+              className="glass-input h-9 w-full rounded-lg px-3 text-[12.5px] text-fg"
             />
           </label>
           <button
             onClick={connect}
             disabled={busy}
-            className="mt-4 flex items-center gap-1.5 rounded-lg bg-gold px-4 py-2 text-[12.5px] font-semibold text-black transition hover:brightness-110 disabled:opacity-60"
+            className="glass-primary mt-4 flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12.5px] font-semibold"
           >
             {busy ? <Loader2 size={14} className="animate-spin" /> : <Plug size={14} />}
             {busy ? '正在启动引擎' : '连接'}
@@ -381,7 +403,7 @@ export default function CatPage() {
   return (
     <div className="flex h-full">
       {/* 站点栏 */}
-      <aside className="flex w-[208px] shrink-0 flex-col border-r border-line/60">
+      <aside className="glass-rail relative z-10 flex w-[208px] shrink-0 flex-col">
         <div className="px-3 pt-4">
           <div className="mb-2 flex items-center justify-between">
             <span className="text-[12px] font-medium">站点</span>
@@ -391,21 +413,21 @@ export default function CatPage() {
             value={keyword}
             onChange={(e) => setKeyword(e.target.value)}
             placeholder="过滤"
-            className="mb-2 h-7 w-full rounded-md border border-line/70 bg-surface-2/70 px-2 text-[11.5px] placeholder:text-muted/60 focus:border-gold/50 focus:outline-none"
+            className="glass-input mb-2 h-7 w-full rounded-md px-2 text-[11.5px]"
           />
           <div className="mb-2 flex gap-1">
             <button
               onClick={() => setOnlyFree(false)}
-              className={`flex-1 rounded-md border px-1 py-[3px] text-[10px] transition ${
-                !onlyFree ? 'border-gold/55 bg-gold/10 text-gold' : 'border-line/60 text-muted hover:text-fg'
+              className={`glass-chip flex-1 rounded-md px-1 py-[3px] text-[10px] ${
+                !onlyFree ? 'is-active text-gold' : 'text-muted'
               }`}
             >
               全部 {sites.length}
             </button>
             <button
               onClick={() => setOnlyFree(true)}
-              className={`flex-1 rounded-md border px-1 py-[3px] text-[10px] transition ${
-                onlyFree ? 'border-gold/55 bg-gold/10 text-gold' : 'border-line/60 text-muted hover:text-fg'
+              className={`glass-chip flex-1 rounded-md px-1 py-[3px] text-[10px] ${
+                onlyFree ? 'is-active text-gold' : 'text-muted'
               }`}
               title="这些站点直接出 m3u8/mp4 直链，不用登录任何网盘"
             >
@@ -418,8 +440,8 @@ export default function CatPage() {
             <button
               key={s.key}
               onClick={() => openSite(s)}
-              className={`mb-1 flex w-full items-center gap-1 rounded-md px-2 py-1.5 text-left text-[11.5px] transition ${
-                site?.key === s.key ? 'bg-gold/12 text-gold' : 'text-muted hover:bg-surface-2/70 hover:text-fg'
+              className={`glass-nav mb-1 flex w-full items-center gap-1 rounded-md border px-2 py-1.5 text-left text-[11.5px] ${
+                site?.key === s.key ? 'is-active text-gold' : ''
               }`}
               title={s.name}
             >
@@ -444,7 +466,7 @@ export default function CatPage() {
               {total > 0 && <span className="text-[11px] text-muted">{total} 条</span>}
               <button
                 onClick={() => openSite(site)}
-                className="ml-auto flex items-center gap-1 rounded-md border border-line/70 px-2 py-1 text-[11px] text-muted hover:text-fg"
+                className="glass-btn ml-auto flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-muted"
               >
                 <RefreshCw size={11} /> 刷新
               </button>
@@ -459,10 +481,8 @@ export default function CatPage() {
                       setActiveClass(c.type_id)
                       void loadCategory(site, c.type_id, 1)
                     }}
-                    className={`rounded-full border px-2.5 py-1 text-[11px] transition ${
-                      activeClass === c.type_id
-                        ? 'border-gold/55 bg-gold/10 text-gold'
-                        : 'border-line/60 text-muted hover:text-fg'
+                    className={`glass-chip rounded-full px-2.5 py-1 text-[11px] ${
+                      activeClass === c.type_id ? 'is-active text-gold' : 'text-muted'
                     }`}
                   >
                     {c.type_name}
@@ -476,7 +496,7 @@ export default function CatPage() {
                 {needPanLogin && (
                   <button
                     onClick={() => void openConfig()}
-                    className="mt-2 flex items-center gap-1.5 rounded-md bg-gold px-2.5 py-1 text-[11px] font-semibold text-black hover:brightness-110"
+                    className="glass-primary mt-2 flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[11px] font-semibold"
                   >
                     <KeyRound size={11} /> 去配置中心登录网盘
                   </button>
@@ -496,7 +516,7 @@ export default function CatPage() {
                     onClick={() => openDetail(site, v)}
                     className="group text-left"
                   >
-                    <div className="relative aspect-[2/3] overflow-hidden rounded-lg border border-line/60 bg-surface-2/60">
+                    <div className="glass-poster relative aspect-[2/3] overflow-hidden rounded-lg">
                       {v.vod_pic ? (
                         <img
                           src={v.vod_pic}
@@ -510,6 +530,7 @@ export default function CatPage() {
                           无封面
                         </div>
                       )}
+                      <div className="glass-sheen" />
                       {v.vod_remarks && (
                         <span className="absolute bottom-1 left-1 rounded bg-black/65 px-1 py-0.5 text-[9.5px] text-white/85">
                           {v.vod_remarks}
@@ -531,7 +552,7 @@ export default function CatPage() {
                 <button
                   disabled={page <= 1}
                   onClick={() => void loadCategory(site, activeClass, page - 1)}
-                  className="rounded-md border border-line/70 p-1 disabled:opacity-40"
+                  className="glass-btn rounded-md p-1 disabled:opacity-40"
                 >
                   <ChevronLeft size={13} />
                 </button>
@@ -541,7 +562,7 @@ export default function CatPage() {
                 <button
                   disabled={page >= pagecount}
                   onClick={() => void loadCategory(site, activeClass, page + 1)}
-                  className="rounded-md border border-line/70 p-1 disabled:opacity-40"
+                  className="glass-btn rounded-md p-1 disabled:opacity-40"
                 >
                   <ChevronRight size={13} />
                 </button>
@@ -633,7 +654,7 @@ function DetailDrawer({
     setFindMsg(hitSite ? `已在「${hitSite}」找到可播片源` : '其它站点也没找到可播片源，换个片名再搜搜')
   }
   return (
-    <div className="w-[340px] shrink-0 overflow-y-auto border-l border-line/60 bg-surface/70 p-4 pb-16 backdrop-blur-xl">
+    <div className="glass-panel w-[340px] shrink-0 overflow-y-auto rounded-none p-4 pb-16">
       <div className="mb-3 flex items-start gap-2">
         <h3 className="flex-1 text-[14px] font-semibold leading-snug">{vod.vod_name}</h3>
         <button onClick={onClose} className="text-muted hover:text-fg">
@@ -645,7 +666,7 @@ function DetailDrawer({
           src={vod.vod_pic}
           alt=""
           referrerPolicy="no-referrer"
-          className="mb-3 max-h-[168px] w-full rounded-lg border border-line/60 object-cover"
+          className="glass-poster mb-3 max-h-[168px] w-full rounded-lg object-cover"
         />
       )}
       <div className="mb-2 flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-muted">
@@ -658,20 +679,20 @@ function DetailDrawer({
         <button
           disabled={busy}
           onClick={() => onPlay(line.flag, first.id)}
-          className="mb-3 flex w-full items-center justify-center gap-1.5 rounded-lg bg-gold py-2.5 text-[13px] font-semibold text-black transition hover:brightness-110 disabled:opacity-60"
+          className="glass-primary mb-3 flex w-full items-center justify-center gap-1.5 rounded-lg py-2.5 text-[13px] font-semibold"
         >
           {busy ? <Loader2 size={15} className="animate-spin" /> : <Play size={14} fill="currentColor" />}
           {busy ? '正在取直链…' : `立即播放 · ${first.name}`}
         </button>
       ) : (
-        <div className="mb-3 rounded-lg border border-amber-400/30 bg-amber-400/10 px-2.5 py-2">
+        <div className="glass-warn mb-3 rounded-lg px-2.5 py-2">
           <p className="text-[11.5px] leading-relaxed text-amber-200/90">
             「{site.name}」这个条目没解析出播放线路。
           </p>
           <button
             disabled={finding}
             onClick={() => void handleFind()}
-            className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-md bg-gold py-2 text-[12px] font-semibold text-black transition hover:brightness-110 disabled:opacity-60"
+            className="glass-primary mt-2 flex w-full items-center justify-center gap-1.5 rounded-md py-2 text-[12px] font-semibold"
           >
             {finding ? <Loader2 size={13} className="animate-spin" /> : <Play size={12} fill="currentColor" />}
             {finding ? '正在其它站点找片…' : '换个站点找这部片'}
@@ -690,8 +711,8 @@ function DetailDrawer({
             <button
               key={l.flag + i}
               onClick={() => onLine(i)}
-              className={`rounded-md border px-2 py-0.5 text-[10.5px] ${
-                i === lineIndex ? 'border-gold/55 bg-gold/10 text-gold' : 'border-line/60 text-muted'
+              className={`glass-chip rounded-md px-2 py-0.5 text-[10.5px] ${
+                i === lineIndex ? 'is-active text-gold' : 'text-muted'
               }`}
             >
               {l.flag}
@@ -710,7 +731,7 @@ function DetailDrawer({
               key={ep.id + i}
               disabled={busy}
               onClick={() => onPlay(line.flag, ep.id)}
-              className="truncate rounded-md border border-line/60 px-1 py-1 text-[10.5px] text-muted transition hover:border-gold/50 hover:text-gold disabled:opacity-50"
+              className="glass-chip truncate rounded-md px-1 py-1 text-[10.5px] text-muted hover:text-gold disabled:opacity-50"
               title={ep.name}
             >
               {ep.name.length > 8 ? ep.name.slice(0, 8) : ep.name}
@@ -719,7 +740,7 @@ function DetailDrawer({
         </div>
       )}
       {isPanSite && (
-        <div className="mt-4 rounded-lg border border-line/60 bg-surface-2/40 p-2">
+        <div className="glass-inset mt-4 rounded-lg p-2">
           <p className="text-[10.5px] leading-relaxed text-muted/70">
             这个站（{site.name}）的字幕源挂在使用者的网盘上，spider 要用你登录的网盘账号换直链，没登录就播不了。
           </p>
@@ -745,10 +766,10 @@ function PanBar({ pan, onOpen }: { pan: Record<string, PanProvider>; onOpen: () 
         ? `${logged.length}/${list.length} 个网盘已登录`
         : `免登录站点可直接播放，仅 4K 网盘站需登录（${list.length} 个网盘均未登录）`
   return (
-    <div className="shrink-0 border-t border-line/60 p-2">
+    <div className="shrink-0 border-t border-white/10 p-2">
       <button
         onClick={onOpen}
-        className="flex w-full items-center justify-center gap-1.5 rounded-md border border-line/70 px-2 py-1.5 text-[11px] text-muted transition hover:border-gold/50 hover:text-gold"
+        className="glass-btn flex w-full items-center justify-center gap-1.5 rounded-md px-2 py-1.5 text-[11px] text-muted hover:text-gold"
       >
         <KeyRound size={11} /> 配置中心
       </button>
@@ -765,7 +786,7 @@ function PanBar({ pan, onOpen }: { pan: Record<string, PanProvider>; onOpen: () 
 
 function ErrBox({ text, children }: { text: string; children?: React.ReactNode }) {
   return (
-    <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/8 px-3 py-2 text-[11.5px] leading-relaxed text-red-300">
+    <div className="glass-alert mt-3 flex items-start gap-2 rounded-lg px-3 py-2 text-[11.5px] leading-relaxed text-red-200">
       <AlertCircle size={13} className="mt-0.5 shrink-0" />
       <div className="min-w-0">
         <span>{text}</span>

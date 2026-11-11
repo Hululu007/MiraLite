@@ -105,7 +105,10 @@ export default function PlayerOverlay({
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-black">
       <div className="flex items-center gap-2 px-4 py-2.5 text-[12px] text-white/70">
-        <button onClick={onClose} className="flex items-center gap-1 hover:text-white">
+        <button
+          onClick={onClose}
+          className="glass-btn flex items-center gap-1 rounded-md px-2 py-1 text-white/75 hover:text-white"
+        >
           <ArrowLeft size={14} /> 返回
         </button>
         <span className="ml-auto truncate text-[10.5px] text-white/40">{url.slice(0, 90)}</span>
@@ -114,20 +117,20 @@ export default function PlayerOverlay({
         <video ref={ref} controls playsInline className="h-full w-full bg-black" />
         {tip && (
           <div className="pointer-events-none absolute inset-x-0 top-3 flex justify-center">
-            <div className="rounded-lg border border-white/15 bg-black/75 px-3 py-1.5 text-[11.5px] text-white/75">
+            <div className="glass-tip rounded-lg px-3 py-1.5 text-[11.5px]">
               {tip}
             </div>
           </div>
         )}
         {perr && (
           <div className="pointer-events-none absolute inset-x-0 bottom-16 flex flex-col items-center gap-2">
-            <div className="pointer-events-auto flex items-center gap-2 rounded-lg border border-red-500/30 bg-black/80 px-3 py-2 text-[11.5px] text-red-300">
+            <div className="glass-alert pointer-events-auto flex items-center gap-2 rounded-lg px-3 py-2 text-[11.5px] text-red-200">
               <AlertCircle size={13} /> {perr}
             </div>
             {onSwitch && (
               <button
                 onClick={onSwitch}
-                className="pointer-events-auto rounded-lg bg-gold px-4 py-1.5 text-[12px] font-medium text-black transition hover:brightness-110"
+                className="glass-primary pointer-events-auto rounded-lg px-4 py-1.5 text-[12px] font-medium"
               >
                 换个站点找这部片
               </button>

@@ -27,10 +27,8 @@ export default function TvPage() {
         </div>
         <button
           onClick={() => setOnlyUnfinished((v) => !v)}
-          className={`rounded-lg border px-3 py-1.5 text-[11.5px] transition ${
-            onlyUnfinished
-              ? 'border-gold/60 bg-gold/15 text-gold'
-              : 'border-line/70 text-muted hover:text-fg'
+          className={`glass-chip rounded-lg px-3 py-1.5 text-[11.5px] ${
+            onlyUnfinished ? 'is-active text-gold' : 'text-muted'
           }`}
         >
           仅未看完

@@ -37,7 +37,7 @@ export default function MoviesPage() {
             共 {list.length} 部 · 来源为你已连接的片源
           </p>
         </div>
-        <div className="flex items-center gap-1 rounded-lg border border-line/70 bg-surface-2/60 p-0.5">
+        <div className="glass-inset flex items-center gap-1 rounded-lg p-0.5">
           {(
             [
               ['rating', '评分'],
@@ -63,10 +63,8 @@ export default function MoviesPage() {
           <button
             key={g}
             onClick={() => setGenre(g)}
-            className={`shrink-0 rounded-full border px-3 py-1 text-[11.5px] transition ${
-              genre === g
-                ? 'border-gold/60 bg-gold/15 text-gold'
-                : 'border-line/70 text-muted hover:border-line hover:text-fg'
+            className={`glass-chip shrink-0 rounded-full px-3 py-1 text-[11.5px] ${
+              genre === g ? 'is-active text-gold' : 'text-muted'
             }`}
           >
             {g}

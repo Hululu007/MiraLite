@@ -26,7 +26,7 @@ export default function CatPoster({
       className="group shrink-0 text-left transition-transform duration-300 ease-out hover:z-10 hover:scale-[1.04] focus:outline-none"
       style={{ width }}
     >
-      <div className="relative aspect-[2/3] overflow-hidden rounded-xl border border-line/60 bg-surface-2/60">
+      <div className="glass-poster relative aspect-[2/3] overflow-hidden rounded-xl">
         {ok ? (
           <img
             src={pic}
@@ -46,6 +46,7 @@ export default function CatPoster({
             {name.slice(0, 4)}
           </div>
         )}
+        <div className="glass-sheen" />
         {remarks && (
           <span className="absolute bottom-1 left-1 max-w-[92%] truncate rounded bg-black/70 px-1 py-0.5 text-[9.5px] text-white/85">
             {remarks}

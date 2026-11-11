@@ -70,7 +70,7 @@ export default function CatSearchPage() {
       <div className="mb-5 flex items-center gap-3">
         <button
           onClick={() => navigate(-1)}
-          className="flex items-center gap-1.5 rounded-lg border border-line/70 px-2.5 py-1.5 text-[11.5px] text-muted transition hover:text-fg"
+          className="glass-btn flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11.5px] text-muted"
         >
           <ArrowLeft size={13} /> 返回
         </button>
@@ -90,16 +90,16 @@ export default function CatSearchPage() {
           <div className="flex gap-1">
             <button
               onClick={() => setOnlyFree(true)}
-              className={`rounded-md border px-2 py-1 text-[10.5px] transition ${
-                onlyFree ? 'border-gold/55 bg-gold/10 text-gold' : 'border-line/60 text-muted hover:text-fg'
+              className={`glass-chip rounded-md px-2 py-1 text-[10.5px] ${
+                onlyFree ? 'is-active text-gold' : 'text-muted'
               }`}
             >
               免登录 {freeCount}
             </button>
             <button
               onClick={() => setOnlyFree(false)}
-              className={`rounded-md border px-2 py-1 text-[10.5px] transition ${
-                !onlyFree ? 'border-gold/55 bg-gold/10 text-gold' : 'border-line/60 text-muted hover:text-fg'
+              className={`glass-chip rounded-md px-2 py-1 text-[10.5px] ${
+                !onlyFree ? 'is-active text-gold' : 'text-muted'
               }`}
             >
               全部 {hits.length}
@@ -109,16 +109,20 @@ export default function CatSearchPage() {
       </div>
 
       {err && (
-        <div className="mb-4 flex items-start gap-2 rounded-lg border border-red-500/30 bg-red-500/8 px-3 py-2 text-[11.5px] leading-relaxed text-red-300">
+        <div className="glass-alert mb-4 flex items-start gap-2 rounded-lg px-3 py-2 text-[11.5px] leading-relaxed text-red-200">
           <AlertCircle size={13} className="mt-0.5 shrink-0" />
           <span>{err}</span>
         </div>
       )}
 
-      {!name && <div className="mt-20 text-center text-[12.5px] text-muted">没带片名，回首页点一张海报吧</div>}
+      {!name && (
+        <div className="glass-panel mx-10 mt-16 rounded-2xl px-6 py-10 text-center text-[12.5px] text-muted">
+          没带片名，回首页点一张海报吧
+        </div>
+      )}
 
       {name && shown.length === 0 && !running && !err && (
-        <div className="mt-20 text-center text-[12.5px] text-muted">
+        <div className="glass-panel mx-10 mt-16 rounded-2xl px-6 py-10 text-center text-[12.5px] text-muted">
           {hits.length === 0 ? '所有站点都没搜到这部片，换个片名再试试' : '免登录站点没命中，切到「全部」看看网盘源'}
         </div>
       )}

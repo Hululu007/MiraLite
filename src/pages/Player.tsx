@@ -140,7 +140,7 @@ export default function PlayerPage() {
       />
 
       {error && (
-        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-xl border border-amber-500/40 bg-black/80 px-4 py-3 text-[12.5px] text-amber-300">
+        <div className="glass-warn absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 rounded-xl px-4 py-3 text-[12.5px] text-amber-200">
           {error}
         </div>
       )}
@@ -152,7 +152,7 @@ export default function PlayerPage() {
       >
         <button
           onClick={() => navigate(-1)}
-          className="flex items-center gap-1.5 rounded-lg bg-white/10 px-3 py-1.5 text-[12px] text-white/85 backdrop-blur transition hover:bg-white/20"
+          className="glass-btn flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[12px] text-white/85"
         >
           <ArrowLeft size={14} /> 返回
         </button>
@@ -200,7 +200,7 @@ export default function PlayerPage() {
                 if (!v) return
                 v.paused ? v.play() : v.pause()
               }}
-              className="flex h-9 w-9 items-center justify-center rounded-full bg-white/15 text-white backdrop-blur transition hover:bg-white/25"
+              className="glass-btn flex h-9 w-9 items-center justify-center rounded-full text-white"
             >
               {playing ? <Pause size={16} fill="currentColor" /> : <Play size={16} fill="currentColor" />}
             </button>

@@ -15,6 +15,16 @@
     "Helvetica Neue", sans-serif;
 }
 
+/* 每次打开由 main.tsx 注入一组新色相，驱动下面所有环境光 */
+:root {
+  color-scheme: dark;
+  --li-h1: 32;
+  --li-h2: 286;
+  --li-h3: 192;
+  --li-h4: 336;
+  --li-rot: 0deg;
+}
+
 html,
 body,
 #root {
@@ -23,7 +33,7 @@ body,
 
 body {
   margin: 0;
-  background: var(--color-base);
+  background: #06060a;
   color: var(--color-fg);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
@@ -31,6 +41,365 @@ body {
   user-select: none;
 }
 
+/* ---------- 环境光：随机彩色渐变 + 缓慢流动 ---------- */
+.liquid-bg {
+  position: fixed;
+  inset: -18%;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(46% 52% at 16% 20%, hsl(var(--li-h1) 94% 58% / 0.34), transparent 68%),
+    radial-gradient(42% 48% at 84% 16%, hsl(var(--li-h2) 92% 62% / 0.30), transparent 70%),
+    radial-gradient(48% 54% at 80% 82%, hsl(var(--li-h3) 88% 54% / 0.26), transparent 72%),
+    radial-gradient(44% 50% at 18% 88%, hsl(var(--li-h4) 90% 60% / 0.24), transparent 72%),
+    linear-gradient(160deg, #0a0a10 0%, #06060a 52%, #08080d 100%);
+  filter: saturate(145%);
+  animation: liquid-drift 26s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+.liquid-veil {
+  position: fixed;
+  inset: -30%;
+  z-index: 0;
+  pointer-events: none;
+  background: conic-gradient(
+    from var(--li-rot) at 50% 50%,
+    transparent 0deg,
+    hsl(var(--li-h1) 96% 64% / 0.10) 58deg,
+    transparent 118deg,
+    hsl(var(--li-h3) 92% 62% / 0.09) 206deg,
+    transparent 292deg,
+    hsl(var(--li-h4) 94% 66% / 0.08) 340deg,
+    transparent 360deg
+  );
+  filter: blur(64px);
+  mix-blend-mode: screen;
+  opacity: 0.85;
+  animation: liquid-spin 64s linear infinite;
+}
+
+.liquid-shade {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 50% 38%, transparent 26%, rgba(0, 0, 0, 0.42) 100%),
+    linear-gradient(180deg, rgba(5, 5, 10, 0.10) 0%, rgba(5, 5, 10, 0.34) 100%);
+}
+
+@keyframes liquid-drift {
+  0% {
+    transform: translate3d(-2%, -1.5%, 0) scale(1.04) rotate(-0.6deg);
+  }
+  50% {
+    transform: translate3d(1.8%, 1.2%, 0) scale(1.11) rotate(0.8deg);
+  }
+  100% {
+    transform: translate3d(-1%, 2%, 0) scale(1.06) rotate(-0.4deg);
+  }
+}
+
+@keyframes liquid-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* ---------- 液态玻璃材质 ---------- */
+.glass-panel,
+.glass-rail,
+.glass-bar,
+.glass-capsule,
+.glass-inset,
+.glass-btn,
+.glass-chip,
+.glass-input,
+.glass-primary,
+.glass-tip,
+.glass-alert,
+.glass-warn {
+  -webkit-backdrop-filter: blur(24px) saturate(170%);
+  backdrop-filter: blur(24px) saturate(170%);
+}
+
+.glass-panel {
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.10) 0%,
+      rgba(255, 255, 255, 0.035) 52%,
+      rgba(255, 255, 255, 0.06) 100%
+    ),
+    linear-gradient(
+      118deg,
+      hsl(var(--li-h1) 92% 68% / 0.065) 0%,
+      transparent 38%,
+      transparent 64%,
+      hsl(var(--li-h3) 92% 66% / 0.055) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.17),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.035),
+    0 18px 46px -24px rgba(0, 0, 0, 0.75);
+}
+
+.glass-rail {
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.085), rgba(255, 255, 255, 0.028)),
+    linear-gradient(
+      20deg,
+      hsl(var(--li-h2) 90% 66% / 0.055),
+      transparent 55%,
+      hsl(var(--li-h1) 90% 66% / 0.045)
+    );
+  box-shadow:
+    inset -1px 0 0 rgba(255, 255, 255, 0.06),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    18px 0 48px -34px rgba(0, 0, 0, 0.9);
+}
+
+.glass-bar {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.10);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.018)),
+    linear-gradient(
+      90deg,
+      hsl(var(--li-h1) 90% 68% / 0.05),
+      transparent 45%,
+      hsl(var(--li-h2) 90% 68% / 0.04)
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.10),
+    0 10px 34px -28px rgba(0, 0, 0, 0.8);
+}
+
+/* 悬浮液态胶囊：比面板更饱满的高光/反射，用在侧栏与顶栏这类悬浮控件 */
+.glass-capsule {
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  background:
+    linear-gradient(
+      150deg,
+      rgba(255, 255, 255, 0.16) 0%,
+      rgba(255, 255, 255, 0.05) 42%,
+      rgba(255, 255, 255, 0.09) 100%
+    ),
+    linear-gradient(
+      120deg,
+      hsl(var(--li-h1) 92% 70% / 0.14) 0%,
+      transparent 40%,
+      transparent 62%,
+      hsl(var(--li-h3) 92% 68% / 0.12) 100%
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.3),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.06),
+    inset 1px 0 0 rgba(255, 255, 255, 0.08),
+    inset -1px 0 0 rgba(255, 255, 255, 0.08),
+    0 24px 60px -28px rgba(0, 0, 0, 0.85),
+    0 8px 24px -18px hsl(var(--li-h2) 92% 55% / 0.35);
+}
+
+.glass-inset {
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.018)),
+    linear-gradient(
+      115deg,
+      hsl(var(--li-h3) 90% 68% / 0.035),
+      transparent 55%,
+      hsl(var(--li-h1) 90% 68% / 0.03)
+    );
+  box-shadow:
+    inset 0 1px 2px rgba(0, 0, 0, 0.22),
+    inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
+}
+
+.glass-input {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background:
+    linear-gradient(180deg, rgba(6, 6, 12, 0.48), rgba(10, 10, 18, 0.30));
+  box-shadow:
+    inset 0 1px 3px rgba(0, 0, 0, 0.32),
+    inset 0 1px 0 rgba(255, 255, 255, 0.055);
+  -webkit-backdrop-filter: blur(14px) saturate(145%);
+  backdrop-filter: blur(14px) saturate(145%);
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+
+.glass-input::placeholder {
+  color: rgba(244, 244, 247, 0.34);
+}
+
+.glass-input:focus {
+  border-color: rgba(232, 180, 76, 0.55);
+  background: linear-gradient(180deg, rgba(10, 9, 16, 0.62), rgba(12, 11, 20, 0.42));
+  box-shadow:
+    0 0 0 3px rgba(232, 180, 76, 0.12),
+    inset 0 1px 3px rgba(0, 0, 0, 0.30),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.glass-btn,
+.glass-chip {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.11), rgba(255, 255, 255, 0.035)),
+    linear-gradient(
+      115deg,
+      hsl(var(--li-h1) 90% 70% / 0.05),
+      transparent 60%,
+      hsl(var(--li-h3) 90% 68% / 0.045)
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.15),
+    0 10px 26px -16px rgba(0, 0, 0, 0.75);
+  -webkit-backdrop-filter: blur(16px) saturate(155%);
+  backdrop-filter: blur(16px) saturate(155%);
+  transition: border-color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease, color 0.2s ease;
+}
+
+.glass-btn:hover,
+.glass-chip:hover {
+  border-color: rgba(255, 255, 255, 0.24);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 12px 30px -16px rgba(0, 0, 0, 0.8);
+}
+
+.glass-chip.is-active,
+.glass-nav.is-active {
+  border-color: rgba(232, 180, 76, 0.34);
+  background:
+    linear-gradient(145deg, rgba(255, 255, 255, 0.14), rgba(232, 180, 76, 0.10)),
+    linear-gradient(
+      115deg,
+      hsl(var(--li-h1) 92% 70% / 0.08),
+      transparent 62%,
+      hsl(var(--li-h3) 92% 68% / 0.07)
+    );
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.22),
+    0 8px 24px -14px rgba(232, 180, 76, 0.42);
+}
+
+.glass-primary {
+  border: 1px solid rgba(255, 255, 255, 0.36);
+  background: linear-gradient(145deg, #f3cb72 0%, #d9a53b 58%, #c98f2c 100%);
+  color: #16120a;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.48),
+    inset 0 -1px 0 rgba(0, 0, 0, 0.16),
+    0 12px 34px -14px rgba(232, 180, 76, 0.72);
+  -webkit-backdrop-filter: blur(10px) saturate(140%);
+  backdrop-filter: blur(10px) saturate(140%);
+  transition: filter 0.2s ease, box-shadow 0.2s ease;
+}
+
+.glass-primary:hover {
+  filter: brightness(1.08);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    0 16px 40px -14px rgba(232, 180, 76, 0.88);
+}
+
+.glass-primary:disabled {
+  opacity: 0.58;
+  filter: saturate(0.6);
+}
+
+.glass-nav {
+  border: 1px solid transparent;
+  background: transparent;
+  color: rgba(244, 244, 247, 0.54);
+  box-shadow: none;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.glass-nav:hover {
+  border-color: rgba(255, 255, 255, 0.10);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.075), rgba(255, 255, 255, 0.02));
+  color: rgba(244, 244, 247, 0.92);
+}
+
+.glass-logo {
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background:
+    linear-gradient(145deg, rgba(232, 180, 76, 0.28), rgba(232, 180, 76, 0.09)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.12), transparent);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.30),
+    0 10px 28px -14px rgba(232, 180, 76, 0.60);
+  -webkit-backdrop-filter: blur(14px) saturate(160%);
+  backdrop-filter: blur(14px) saturate(160%);
+}
+
+/* 卡片边缘的折射高光；和图片叠用，不遮内容 */
+.glass-poster {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.16),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.035),
+    0 20px 44px -24px rgba(0, 0, 0, 0.92);
+}
+
+.glass-sheen {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background: linear-gradient(
+    128deg,
+    hsl(var(--li-h1) 100% 82% / 0.11) 0%,
+    rgba(255, 255, 255, 0.05) 18%,
+    transparent 42%,
+    transparent 68%,
+    hsl(var(--li-h3) 100% 80% / 0.08) 100%
+  );
+}
+
+.glass-tip {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: linear-gradient(145deg, rgba(18, 18, 28, 0.74), rgba(6, 6, 12, 0.60));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.13),
+    0 14px 36px -18px rgba(0, 0, 0, 0.9);
+  color: rgba(255, 255, 255, 0.82);
+  -webkit-backdrop-filter: blur(20px) saturate(160%);
+  backdrop-filter: blur(20px) saturate(160%);
+}
+
+.glass-alert {
+  border: 1px solid rgba(248, 113, 113, 0.30);
+  background:
+    linear-gradient(145deg, rgba(239, 68, 68, 0.16), rgba(239, 68, 68, 0.055)),
+    linear-gradient(120deg, hsl(var(--li-h4) 90% 68% / 0.05), transparent 70%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.11),
+    0 14px 36px -20px rgba(0, 0, 0, 0.8);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
+}
+
+.glass-warn {
+  border: 1px solid rgba(251, 191, 36, 0.30);
+  background:
+    linear-gradient(145deg, rgba(245, 158, 11, 0.16), rgba(245, 158, 11, 0.05)),
+    linear-gradient(120deg, hsl(var(--li-h1) 90% 68% / 0.06), transparent 70%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.12),
+    0 14px 36px -20px rgba(0, 0, 0, 0.8);
+  -webkit-backdrop-filter: blur(18px) saturate(150%);
+  backdrop-filter: blur(18px) saturate(150%);
+}
+
+/* ---------- 基础细节 ---------- */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -39,11 +408,16 @@ body {
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #2e2e38;
+  background: rgba(255, 255, 255, 0.16);
   border-radius: 99px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #40404d;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+::selection {
+  background: rgba(232, 180, 76, 0.28);
+  color: #fff;
 }
 
 .no-scrollbar::-webkit-scrollbar {
@@ -73,4 +447,11 @@ body {
   opacity: 0.025;
   z-index: 60;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='120' height='120'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='3'/%3E%3C/filter%3E%3Crect width='120' height='120' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .liquid-bg,
+  .liquid-veil {
+    animation: none;
+  }
 }

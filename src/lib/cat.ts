@@ -81,6 +81,41 @@ export async function catStop(): Promise<void> {
   if (invoke) await invoke('cat_stop')
 }
 
+/** 当前引擎在用的订阅地址（浏览器预览返回 null） */
+export async function catActiveUrl(): Promise<string | null> {
+  const invoke = invokeFn()
+  if (!invoke) return null
+  try {
+    return (await invoke('cat_active_url')) as string | null
+  } catch {
+    return null
+  }
+}
+
+/** 订阅可用性检测结果 */
+export interface CatProbe {
+  ok: boolean
+  /** 引擎是否在 30 秒内就绪 */
+  engine: boolean
+  /** config 里的站点总数 */
+  sites: number
+  /** 实测能搜到影视的站点数 */
+  working: number
+  /** 实测总命中条数 */
+  hits: number
+  /** 命中的片名样例 */
+  samples: string[]
+  /** 结论文案 */
+  message: string
+}
+
+/** 用独立临时引擎测试一个订阅地址是否可用（不影响当前正在用的源） */
+export async function catProbe(url: string): Promise<CatProbe> {
+  const invoke = invokeFn()
+  if (!invoke) throw new Error('订阅测试需要在桌面版里使用')
+  return (await invoke('cat_probe', { url })) as CatProbe
+}
+
 async function call<T>(path: string, body?: Record<string, unknown>): Promise<T> {
   const invoke = invokeFn()
   if (!invoke) throw new Error('CAT 接口需要在桌面版里使用')

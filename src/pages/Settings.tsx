@@ -1,15 +1,17 @@
 import { actions, useLibrary } from '../lib/store'
+import SourcesSection from '../components/SourcesSection'
+import TmdbSection from '../components/TmdbSection'
 
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
     <button
       onClick={() => onChange(!on)}
       className={`relative h-[22px] w-[38px] shrink-0 rounded-full transition ${
-        on ? 'bg-gold' : 'bg-surface-3'
+        on ? 'bg-gold shadow-[0_0_18px_-4px_rgba(232,180,76,0.75)]' : 'bg-white/14'
       }`}
     >
       <span
-        className={`absolute top-[3px] h-4 w-4 rounded-full bg-white transition-all ${
+        className={`absolute top-[3px] h-4 w-4 rounded-full bg-white shadow transition-all ${
           on ? 'left-[19px]' : 'left-[3px]'
         }`}
       />
@@ -19,9 +21,9 @@ function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void 
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="mb-6 rounded-2xl border border-line/60 bg-surface/50">
-      <div className="border-b border-line/50 px-5 py-3 text-[12.5px] font-medium text-fg/80">{title}</div>
-      <div className="divide-y divide-line/40">{children}</div>
+    <div className="glass-panel mb-6 overflow-hidden rounded-2xl">
+      <div className="border-b border-white/10 px-5 py-3 text-[12.5px] font-medium text-fg/85">{title}</div>
+      <div className="divide-y divide-white/8">{children}</div>
     </div>
   )
 }
@@ -39,12 +41,12 @@ function Row({ title, desc, right }: { title: string; desc: string; right: React
 }
 
 export default function SettingsPage() {
-  const { prefs, progress, sources, watchlist } = useLibrary()
+  const { prefs, progress, watchlist } = useLibrary()
 
   return (
     <div className="px-10 pb-16 pt-7">
       <h1 className="mb-1 text-[22px] font-semibold tracking-tight">设置</h1>
-      <p className="mb-6 text-[12px] text-muted">播放、推荐与本地数据处理方式</p>
+      <p className="mb-6 text-[12px] text-muted">播放、推荐、片源与本地数据处理方式</p>
 
       <Section title="播放">
         <Row
@@ -56,13 +58,13 @@ export default function SettingsPage() {
           title="优先画质"
           desc="直播流与点播的默认清晰度"
           right={
-            <div className="flex gap-1 rounded-lg border border-line/70 bg-surface-2/60 p-0.5">
+            <div className="glass-inset flex gap-1 rounded-lg p-0.5">
               {(['auto', '1080p', '720p'] as const).map((k) => (
                 <button
                   key={k}
                   onClick={() => actions.setPrefs({ preferQuality: k })}
-                  className={`rounded-md px-2 py-1 text-[11px] transition ${
-                    prefs.preferQuality === k ? 'bg-gold/90 text-black' : 'text-muted hover:text-fg'
+                  className={`glass-chip rounded-md px-2 py-1 text-[11px] ${
+                    prefs.preferQuality === k ? 'is-active text-gold' : 'text-muted'
                   }`}
                 >
                   {k}
@@ -81,8 +83,15 @@ export default function SettingsPage() {
         />
       </Section>
 
+      <Section title="影视数据源（TMDB）">
+        <TmdbSection />
+      </Section>
+
+      <Section title="片源">
+        <SourcesSection />
+      </Section>
+
       <Section title="数据">
-        <Row title="已连接源" desc={`${sources.length} 个源`} right={<span className="text-[12px] text-muted">—</span>} />
         <Row title="片单" desc={`${watchlist.length} 部已收藏`} right={<span className="text-[12px] text-muted">—</span>} />
         <Row
           title="观看记录"
@@ -92,7 +101,7 @@ export default function SettingsPage() {
               onClick={() => {
                 Object.keys(progress).forEach((id) => actions.clearProgress(id))
               }}
-              className="rounded-lg border border-line/70 px-2.5 py-1 text-[11.5px] text-muted transition hover:border-red-500/40 hover:text-red-400"
+              className="glass-btn rounded-lg px-2.5 py-1 text-[11.5px] text-muted transition hover:text-red-300"
             >
               清空
             </button>

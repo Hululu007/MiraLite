@@ -45,16 +45,16 @@ export default function DetailPage() {
             background: `linear-gradient(115deg, hsl(${item.hue} 58% 24%) 0%, hsl(${(item.hue + 36) % 360} 42% 10%) 46%, #08080a 100%)`,
           }}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-base via-base/30 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-t from-[#08080a]/95 via-[#08080a]/30 to-transparent" />
         <button
           onClick={() => navigate(-1)}
-          className="absolute left-10 top-6 flex items-center gap-1.5 rounded-lg bg-black/25 px-2.5 py-1.5 text-[11.5px] text-white/75 backdrop-blur transition hover:bg-black/40"
+          className="glass-btn absolute left-10 top-6 flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[11.5px] text-white/85"
         >
           <ArrowLeft size={13} /> 返回
         </button>
 
         <div className="absolute inset-x-10 bottom-7 flex gap-6">
-          <div className="shrink-0 overflow-hidden rounded-xl ring-1 ring-white/10">
+          <div className="glass-poster shrink-0 overflow-hidden rounded-xl">
             <Poster item={item} width={132} />
           </div>
           <div className="min-w-0 flex-1 pb-1">
@@ -79,14 +79,14 @@ export default function DetailPage() {
             <div className="mt-4 flex items-center gap-2.5">
               <button
                 onClick={() => navigate(`/play/${item.id}`)}
-                className="flex items-center gap-1.5 rounded-lg bg-gold px-4 py-2 text-[12.5px] font-semibold text-black transition hover:brightness-110"
+                className="glass-primary flex items-center gap-1.5 rounded-lg px-4 py-2 text-[12.5px] font-semibold"
               >
                 <Play size={13} fill="currentColor" />
                 {watchedRatio > 0.01 && watchedRatio < 0.95 ? '继续播放' : '播放'}
               </button>
               <button
                 onClick={() => actions.toggleWatchlist(item.id)}
-                className="flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3.5 py-2 text-[12.5px] text-fg/85 transition hover:bg-white/10"
+                className="glass-btn flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[12.5px] text-fg/85"
               >
                 {inList ? <Check size={13} /> : <Plus size={13} />}
                 {inList ? '已在片单' : '加入片单'}
@@ -104,7 +104,7 @@ export default function DetailPage() {
               <button
                 key={ep}
                 onClick={() => navigate(`/play/${item.id}`)}
-                className="group flex items-center gap-3 rounded-xl border border-line/60 bg-surface/50 px-3 py-2.5 text-left transition hover:border-gold/40 hover:bg-surface-2"
+                className="glass-inset group flex items-center gap-3 rounded-xl px-3 py-2.5 text-left"
               >
                 <span className="text-[13px] font-semibold text-muted group-hover:text-gold">
                   {String(ep).padStart(2, '0')}

@@ -23,21 +23,41 @@ AIGC:
 | 路由 | react-router-dom（HashRouter，便于 Tauri 打包后直出） |
 | 播放 | HTML5 video + hls.js（Safari 走原生 HLS） |
 | 状态 | 轻量 `useSyncExternalStore` store，localStorage 持久化 |
+| 影视元数据 | TMDB（Rust 代理 `api.tmdb.org`，Key 存本地配置；内置真实数据快照兜底） |
 | 桌面壳 | Tauri v2（Rust），已接入并打包 `.app` / `.dmg` |
 
 ## 目录结构
 
 ```
 src/
-  components/   Shell 导航壳、PlayerOverlay 全屏播放层、Poster/Row
-  data/         演示数据（电影/剧集/频道）
-  lib/          types / store / catalog / m3u / cat（CAT 接口封装）
-  pages/        Home / Movies / TV / Sources / Cat / CatSearch / CatDetail / Player / Detail / Search / Settings
+  components/   Shell 导航壳、SourcesSection 片源区块、TmdbSection 影视数据源设置、PlayerOverlay 全屏播放层、Poster/Row
+  data/         演示数据（电影/剧集/频道）+ tmdbSnapshot（TMDB 真实榜单快照，离线兜底）
+  lib/          types / store / catalog / m3u / cat（CAT IPC 封装）/ catSession（多订阅源·热门·跨站搜索）/ tmdb（TMDB 数据源）/ chase（追剧清单）
+  pages/        Home / Chase / Movies / TV / Cat / CatSearch / CatDetail / Player / Detail / Search / Settings
 src-tauri/
   src/lib.rs           Tauri 命令注册与启动
-  src/cat.rs           CAT spider 引擎拉起、缓存、cat_proxy（:9988）
+  src/cat.rs           CAT 引擎拉起与按订阅地址哈希隔离缓存、cat_proxy、cat_probe（:9988 等，避开流代理 :9989）
+  src/tmdb.rs          TMDB 榜单代理（api.tmdb.org）、Key 本地配置、连接测试
   src/stream_proxy.rs  本地串流代理（:9989），HLS 改写 + 鉴权 header 透传 + Range
 ```
+
+## TMDB 影视聚合首页
+
+首页是 TMDB 影视聚合：**3D 立体自动旋转轮播**（coverflow 环廊，rAF 驱动匀速转动、悬停暂停、
+点击卡片/箭头/指示点平滑转到目标，9 张卡片铺满两侧）作为头部焦点，上方不再有信息卡；
+下方按「正在热映 / 热门电影 / 热门剧集 / 高分经典 / 高分剧集」分多榜单横向海报行。点任意海报会用片名跳到
+CAT 跨站搜索页找可播线路（TMDB 只提供元数据，播放仍由 CAT 聚合站提供）。
+
+> **榜单缓存**：TMDB 榜单一天只更新几次，没必要每次进首页都并发拉 5 个接口。`src/lib/tmdb.ts` 做了
+> 「内存 + localStorage」双缓存（键 `miralite.tmdb.rankings.v1`，TTL 6 小时，按 地址/语言/Key 指纹隔离）。
+> 缓存新鲜时进首页零网络请求、秒开；过期时先用旧数据渲染、后台静默刷新并无缝换上新数据（stale-while-revalidate）；
+> 并发调用共享同一个请求（in-flight 去重），请求失败保留旧缓存；改 Key / 手动点右上角刷新按钮会重新拉取。
+> 左下角极简行显示「TMDB · N 部 · 实时/离线 · 更新于 HH:MM」。
+
+> **网络与 Key**：官方 `api.themoviedb.org` 在国内被 DNS 污染不可达，实际使用官方备用域名 `api.tmdb.org`
+> （AWS CloudFront，实测可达）。在「设置 → 影视数据源（TMDB）」填 v3 api_key 或 v4 Bearer Token 即可走实时数据，
+> Key 只存本机 `~/Library/Application Support/com.miralite.app/tmdb.json`（权限 600），不进源码/二进制。
+> 未配置 Key、请求失败或浏览器预览时，自动回退到内置的 TMDB 真实数据快照，首页始终有内容。
 
 ## CAT 播放链路与鉴权 header
 
@@ -68,21 +88,29 @@ npm run build   # 产物输出到 dist/
 
 ## 已实现
 
-- 左侧导航壳 + 顶部搜索，CAT 聚合 +  IPTV + 本地媒体库
-- CAT 页：站点清单、分类浏览、跨站并发搜索、网盘登录引导、免登录站点筛选
+- 极简左侧导航（首页 / 追剧 / 设置，菜单整体下移避开 macOS 红绿灯）+ 顶部搜索，CAT 聚合 + IPTV + 本地媒体库
+- **追剧**：播放 CAT 剧集自动记入本地清单，记录看到第几集 / 站点 / 更新时间；支持「继续追」回详情选集、星标收藏、移除与清空；首页热门可一键加入
+- **液态玻璃视觉**：每次打开随机生成一组色相，底层彩色光晕渐变缓慢流动；侧栏、顶栏、设置面板、输入框、卡片与按钮统一使用半透明玻璃材质（背景模糊 + 高光边缘 + 彩色折射），播放区保持纯黑避免干扰
+- 首页：**TMDB 影视聚合** — 头部 **3D 立体自动旋转轮播**（rAF 匀速转动、悬停暂停、点击平滑切换、9 张卡片铺满两侧、评分角标，无顶部信息卡），下方「正在热映/热门电影/热门剧集/高分经典/高分剧集」多榜单横向海报行，点海报跨站搜可播线路。数据源为 TMDB 实时 API（Rust 代理 + 本地 Key 配置），带 6 小时双缓存（进首页零网络秒开、过期后台静默刷新），失败自动回退内置真实快照
+- CAT 页（保留路由，供首页跳转）：站点清单、分类浏览、跨站并发搜索、网盘登录引导、免登录站点筛选
+- **统一搜索**：顶栏搜索框同时检索「本地/频道」与「CAT 跨站真实影视」，结果分区展示；CAT 部分并发多站点、按相关度排序，并可跳 CAT 搜索页查看全部
 - CAT 详情页：多线路 + 选集、自动换线兜底、鉴权 header 透传播放
-- 首页：Hero 精选、继续观看、For You（TastePrint 加权推荐）、电影/剧集/直播四组行
-- 电影页 / 剧集页：类型筛选、排序、观看进度条
-- 片源页：M3U / Xtream / 本地目录三类接入，拉取真实播放列表并解析入库
+- 电影页 / 剧集页（保留路由，不在菜单展示）：类型筛选、排序、观看进度条
 - 播放器：hls.js 自适应、自定义控制条、进度回写、键盘快捷键（空格/←→/M/Esc）
 - Rust 流代理（:9989）：m3u8 逐层改写、鉴权 header 透传、Range 拖动、慢启动容错
-- 设置页：自动连播、优先画质、TastePrint 开关、观看记录清空
+- 设置页：
+  - 播放：自动连播、优先画质
+  - 推荐：TastePrint 开关
+  - **片源**：
+    - 影视订阅：可保存**多个 CAT 订阅源**（本地 `miralite.cat.subscriptions.v1`，兼容旧单地址自动迁移）；每条可改名、删除，点列表前的「选择 / 使用中」**即时切换**（同一时间一个生效，首页热门/搜索/播放都基于它）；「测试」按钮用**独立临时引擎**实测站点数与搜索命中，不影响正在用的源；应用启动时自动预热当前启用的订阅
+    - 网盘配置中心、M3U / Xtream / 本地目录三类接入、已连接源管理
+  - 数据：片单、观看记录清空
 
 ## 打包
 
 ```bash
 export PATH="$HOME/.cargo/bin:/usr/local/bin:$PATH"  # Rust + 系统 node
-npm run tauri build --bundles app   # 产物 src-tauri/target/release/bundle/macos/MiraLite.app
+npx tauri build --bundles app       # 产物 src-tauri/target/release/bundle/macos/MiraLite.app
 ```
 
 前端资源由 Tauri 嵌入二进制，改动**前端或 Rust 都必须重新 `tauri build`** 才会进入 `.app`。

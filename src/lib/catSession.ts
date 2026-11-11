@@ -7,6 +7,7 @@
  */
 
 import {
+  catActiveUrl,
   catCategory,
   catConfig,
   catHome,
@@ -18,9 +19,136 @@ import {
   type CatVod,
 } from './cat'
 
-/** CAT 页与首页共用同一份订阅地址 */
+/** 旧版单地址存档：只用于迁移到新的多订阅源列表 */
 export const CAT_URL_KEY = 'miralite.cat.url'
 export const DEFAULT_CAT_URL = 'https://9280.kstore.vip/cat/index.js.md5'
+const CAT_SUBS_KEY = 'miralite.cat.subscriptions.v1'
+
+/** 一条影视订阅源。同一时间只有一条 enabled，首页热门/搜索都基于它。 */
+export interface CatSubscription {
+  id: string
+  name: string
+  url: string
+  enabled: boolean
+}
+
+function newSubId(): string {
+  return `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`
+}
+
+/** 读出全部订阅源。首次使用会把旧的单地址迁进来。 */
+export function readSubscriptions(): CatSubscription[] {
+  try {
+    const raw = localStorage.getItem(CAT_SUBS_KEY)
+    if (raw) {
+      const list = JSON.parse(raw) as CatSubscription[]
+      if (Array.isArray(list) && list.length > 0) return list
+    }
+  } catch {
+    /* 读坏就当没有 */
+  }
+  const legacy = localStorage.getItem(CAT_URL_KEY)
+  const migrated: CatSubscription[] = [
+    { id: newSubId(), name: '默认订阅', url: legacy || DEFAULT_CAT_URL, enabled: true },
+  ]
+  writeSubscriptions(migrated)
+  return migrated
+}
+
+export function writeSubscriptions(list: CatSubscription[]): void {
+  try {
+    localStorage.setItem(CAT_SUBS_KEY, JSON.stringify(list))
+    // 旧 key 同步成当前启用的地址，保证老代码路径也能读到
+    const active = list.find((s) => s.enabled)
+    if (active) localStorage.setItem(CAT_URL_KEY, active.url)
+  } catch {
+    /* 存不下不影响使用 */
+  }
+}
+
+export function activeSubscription(): CatSubscription | null {
+  const list = readSubscriptions()
+  return list.find((s) => s.enabled) ?? list[0] ?? null
+}
+
+/** 新增一条订阅源；返回新列表。重名地址不会重复添加。 */
+export function addSubscription(url: string, name?: string): CatSubscription[] {
+  const target = url.trim()
+  if (!target) throw new Error('订阅地址不能为空')
+  const list = readSubscriptions()
+  if (list.some((s) => s.url.trim() === target)) throw new Error('这个订阅地址已经添加过了')
+  const item: CatSubscription = {
+    id: newSubId(),
+    name: name?.trim() || `订阅源 ${list.length + 1}`,
+    url: target,
+    enabled: false,
+  }
+  const next = [...list, item]
+  writeSubscriptions(next)
+  return next
+}
+
+export function renameSubscription(id: string, name: string): CatSubscription[] {
+  const next = readSubscriptions().map((s) =>
+    s.id === id ? { ...s, name: name.trim() || s.name } : s,
+  )
+  writeSubscriptions(next)
+  return next
+}
+
+export function removeSubscription(id: string): CatSubscription[] {
+  const list = readSubscriptions()
+  const next = list.filter((s) => s.id !== id)
+  if (next.length > 0 && !next.some((s) => s.enabled)) next[0] = { ...next[0], enabled: true }
+  writeSubscriptions(next)
+  return next
+}
+
+/** 清空订阅切换后失效的本地缓存（热门聚合 + 详情暂存） */
+function clearCatCaches(): void {
+  sitesPromise = null
+  try {
+    localStorage.removeItem('miralite.hot.v1')
+    sessionStorage.removeItem('miralite.vodcache.v1')
+  } catch {
+    /* 清不掉就算了 */
+  }
+}
+
+/**
+ * 立即选中一个订阅源：只改本地列表、落盘并清缓存，不碰引擎。
+ * 这样「点击选择」永远即时生效，连接失败也不会让选择看起来没反应。
+ */
+export function selectSubscription(id: string): CatSubscription[] {
+  const list = readSubscriptions()
+  if (!list.some((s) => s.id === id)) throw new Error('订阅源不存在')
+  const next = list.map((s) => ({ ...s, enabled: s.id === id }))
+  writeSubscriptions(next)
+  clearCatCaches()
+  return next
+}
+
+/**
+ * 让引擎跑在指定订阅地址上（不修改列表）。返回解析到的站点数。
+ * 已经是这个地址且引擎健康时直接返回，不重复重启。
+ */
+export async function connectSubscription(url: string): Promise<number> {
+  const running = await catActiveUrl()
+  const port = await catStatus()
+  if (!port || running !== url) await catStart(url)
+  const cfg = await catConfig()
+  if (cfg.length === 0) throw new Error('这个订阅里没有任何可用站点')
+  return cfg.length
+}
+
+/** 确保引擎在跑，且跑的是当前启用的订阅；不一致就切过去。 */
+export async function ensureEngine(): Promise<void> {
+  const sub = activeSubscription()
+  if (!sub) throw new Error('还没有影视订阅源，去「设置 → 片源」添加一个')
+  const port = await catStatus()
+  const running = await catActiveUrl()
+  if (!port || running !== sub.url) await catStart(sub.url)
+}
 
 export function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
@@ -41,14 +169,10 @@ let sitesPromise: Promise<CatSite[]> | null = null
 export function ensureSites(force = false): Promise<CatSite[]> {
   if (!sitesPromise || force) {
     sitesPromise = (async () => {
-      const port = await catStatus()
-      if (!port) {
-        // 引擎重装/重启后 Rust 侧记不住端口，这里用保存过的订阅地址自动拉起来
-        const saved = localStorage.getItem(CAT_URL_KEY) || DEFAULT_CAT_URL
-        await catStart(saved)
-      }
+      // 引擎没起、或在用的是另一个订阅时，自动切到当前启用的源
+      await ensureEngine()
       const cfg = await catConfig()
-      if (cfg.length === 0) throw new Error('CAT 配置里没有任何可用站点')
+      if (cfg.length === 0) throw new Error('这个订阅里没有任何可用站点')
       return cfg
     })().catch((e) => {
       sitesPromise = null

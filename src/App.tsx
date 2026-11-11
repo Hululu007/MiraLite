@@ -1,9 +1,9 @@
 import { Route, Routes } from 'react-router-dom'
 import Shell from './components/Shell'
 import HomePage from './pages/Home'
+import ChasePage from './pages/Chase'
 import MoviesPage from './pages/Movies'
 import TvPage from './pages/TV'
-import SourcesPage from './pages/Sources'
 import CatPage from './pages/Cat'
 import CatSearchPage from './pages/CatSearch'
 import CatDetailPage from './pages/CatDetail'
@@ -17,9 +17,9 @@ export default function App() {
     <Routes>
       <Route element={<Shell />}>
         <Route path="/" element={<HomePage />} />
+        <Route path="/chase" element={<ChasePage />} />
         <Route path="/movies" element={<MoviesPage />} />
         <Route path="/tv" element={<TvPage />} />
-        <Route path="/sources" element={<SourcesPage />} />
         <Route path="/cat" element={<CatPage />} />
         <Route path="/cat/search" element={<CatSearchPage />} />
         <Route path="/cat/item" element={<CatDetailPage />} />
