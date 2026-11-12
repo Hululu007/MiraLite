@@ -26,6 +26,7 @@ import {
   type PlayingSource,
 } from '../lib/cat'
 import { cacheKey, ensureSites, recallVod, withTimeout } from '../lib/catSession'
+import { probeWithScripts } from '../lib/userscript'
 
 export default function CatDetailPage() {
   const [params] = useSearchParams()
@@ -46,6 +47,8 @@ export default function CatDetailPage() {
   const [tip, setTip] = useState<string | null>(null)
   const queue = useRef<{ flag: string; id: string }[]>([])
   const autoBusy = useRef(false)
+  /** 一次播放里只让用户脚本抢救一回，避免脚本给出坏地址后无限重试 */
+  const rescued = useRef(false)
 
   // 站点对象必须来自 config（带着 /spider/xxx/3 这种 api 路径），自己按 key 拼会 404
   const [site, setSite] = useState<CatSite | null>(null)
@@ -113,11 +116,29 @@ export default function CatDetailPage() {
     [lines],
   )
 
+  /** 所有线路都失败时的最后一招：把当前地址交给用户脚本，看能不能抛出别的直链 */
+  const rescueWithScripts = useCallback(async (): Promise<boolean> => {
+    const cur = playing?.url
+    if (!cur || rescued.current) return false
+    rescued.current = true
+    setTip('线路都播不动，正在用用户脚本抢救这个地址…')
+    try {
+      const r = await probeWithScripts(cur)
+      if (r.links.length === 0) return false
+      setPlaying({ url: r.links[0] })
+      setTip(`脚本「${r.matched[0]}」换出了新地址，重试中…`)
+      return true
+    } catch {
+      return false
+    }
+  }, [playing])
+
   const autoNext = useCallback(async () => {
     if (!site || autoBusy.current) return
     autoBusy.current = true
     try {
       if (queue.current.length === 0) {
+        if (await rescueWithScripts()) return
         setTip('这条源播不动，换一个站点试试')
         setExhausted(true)
         return
@@ -137,11 +158,12 @@ export default function CatDetailPage() {
           /* 换下一条 */
         }
       }
+      if (await rescueWithScripts()) return
       setTip('所有线路都试过了，换个站点再找找')
     } finally {
       autoBusy.current = false
     }
-  }, [site])
+  }, [site, rescueWithScripts])
 
   const play = useCallback(
     async (flag: string, id: string) => {
@@ -153,6 +175,7 @@ export default function CatDetailPage() {
       setTip(null)
       setNeedPanLogin(false)
       setBusy(true)
+      rescued.current = false
       buildQueue(flag, id)
       if (vod) {
         const curLine = lines.find((l) => l.flag === flag)
@@ -277,12 +300,20 @@ export default function CatDetailPage() {
             <p className="text-[11.5px] leading-relaxed text-amber-200/90">
               {loading ? '正在解析这部片的播放线路…' : `「${siteName}」这个条目没有解析出可播线路`}
             </p>
-            <button
-              onClick={goSearch}
-              className="glass-primary mt-2.5 inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[12px] font-semibold"
-            >
-              <Search size={12} /> 去其它站点搜这部片
-            </button>
+            <div className="mt-2.5 flex items-center justify-center gap-2">
+              <button
+                onClick={goSearch}
+                className="glass-primary inline-flex items-center gap-1.5 rounded-lg px-3.5 py-2 text-[12px] font-semibold"
+              >
+                <Search size={12} /> 去其它站点搜这部片
+              </button>
+              <button
+                onClick={() => navigate('/userscript')}
+                className="glass-btn inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11.5px] text-muted hover:text-gold"
+              >
+                用脚本解析网页
+              </button>
+            </div>
           </div>
         )}
       </section>

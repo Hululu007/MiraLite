@@ -8,6 +8,7 @@
  */
 
 import { useSyncExternalStore } from 'react'
+import { inTauri, viaProxy } from './cat'
 
 const KEY = 'miralite.userscripts.v1'
 
@@ -406,4 +407,56 @@ export function serialize(script: UserScript): string {
     '// ==/UserScript==',
   ]
   return `${head.filter(Boolean).join('\n')}\n\n${script.code}`
+}
+
+/* ------------------------------------------------------------------ 抓页与播放兜底 */
+
+/** 抓一个地址的正文；桌面版统一走 9989 代理（补 UA/Referer，绕防盗链与跨域） */
+export async function fetchPage(url: string): Promise<string> {
+  const endpoint = inTauri() ? viaProxy(url) : url
+  const res = await fetch(endpoint)
+  if (!res.ok) throw new Error(`HTTP ${res.status}`)
+  return await res.text()
+}
+
+export interface ProbeResult {
+  /** 命中的脚本名 */
+  matched: string[]
+  /** 脚本挖出来的、可以直接喂给播放器的地址 */
+  links: string[]
+  logs: RunLog[]
+  error?: string
+}
+
+/**
+ * 播放兜底：一条线路播不动时，看看有没有脚本愿意接手这个地址。
+ * 抓回页面（或播放列表本身）-> 跑 @match 命中的脚本 -> 收集新地址。
+ * 没有脚本命中时成本为零，直接返回。
+ */
+export async function probeWithScripts(url: string): Promise<ProbeResult> {
+  const matched = pickScripts(state, url)
+  if (matched.length === 0 || !url) return { matched: [], links: [], logs: [] }
+
+  let html = ''
+  try {
+    html = await fetchPage(url)
+  } catch (e) {
+    const error = e instanceof Error ? e.message : String(e)
+    return { matched: matched.map((m) => m.name), links: [], logs: [], error: `抓取失败：${error}` }
+  }
+
+  const results = runScripts(state, url, html)
+  const seen = new Set<string>()
+  const links: string[] = []
+  const logs: RunLog[] = []
+  for (const r of results) {
+    logs.push(...r.logs)
+    // 原地址本身不算「抢救成功」
+    for (const l of r.links) {
+      if (l === url || seen.has(l)) continue
+      seen.add(l)
+      links.push(l)
+    }
+  }
+  return { matched: results.map((r) => r.scriptName), links, logs }
 }

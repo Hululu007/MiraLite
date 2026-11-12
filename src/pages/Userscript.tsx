@@ -1,7 +1,9 @@
 import { useMemo, useRef, useState } from 'react'
-import { FileCode2, Play, Plus, Trash2, Upload, Download, Wand2 } from 'lucide-react'
-import { inTauri, viaProxy } from '../lib/cat'
+import { Copy, FileCode2, Play, Plus, Trash2, Upload, Download, Wand2 } from 'lucide-react'
+import PlayerOverlay from '../components/PlayerOverlay'
+import { inTauri } from '../lib/cat'
 import {
+  fetchPage,
   parseUserScript,
   pickScripts,
   runScript,
@@ -125,7 +127,15 @@ function ScriptCard({
   )
 }
 
-function LogView({ results }: { results: RunResult[] }) {
+function LogView({
+  results,
+  onPlay,
+  onCopy,
+}: {
+  results: RunResult[]
+  onPlay: (url: string) => void
+  onCopy: (url: string) => void
+}) {
   if (results.length === 0) return null
   return (
     <div className="glass-panel mt-5 overflow-hidden rounded-2xl">
@@ -159,9 +169,21 @@ function LogView({ results }: { results: RunResult[] }) {
             </div>
             {r.links.length > 0 && (
               <div className="mt-2 space-y-1">
-                {r.links.slice(0, 4).map((u) => (
-                  <div key={u} className="truncate font-mono text-[10px] text-emerald-300/80">
-                    {u}
+                {r.links.slice(0, 6).map((u) => (
+                  <div key={u} className="flex items-center gap-2">
+                    <div className="min-w-0 flex-1 truncate font-mono text-[10px] text-emerald-300/80">{u}</div>
+                    <button
+                      onClick={() => onPlay(u)}
+                      className="glass-chip flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-fg/75"
+                    >
+                      <Play size={9} /> 播放
+                    </button>
+                    <button
+                      onClick={() => onCopy(u)}
+                      className="glass-chip flex shrink-0 items-center gap-1 rounded px-1.5 py-0.5 text-[10px] text-fg/75"
+                    >
+                      <Copy size={9} />
+                    </button>
                   </div>
                 ))}
               </div>
@@ -180,6 +202,7 @@ export default function UserscriptPage() {
   const [results, setResults] = useState<RunResult[]>([])
   const [msg, setMsg] = useState('')
   const [editing, setEditing] = useState<UserScript | null>(null)
+  const [playing, setPlaying] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
   const preview = useMemo(() => (draft.trim() ? parseUserScript(draft) : null), [draft])
@@ -210,18 +233,11 @@ export default function UserscriptPage() {
     reader.readAsText(f)
   }
 
-  async function fetchHtml(url: string): Promise<string> {
-    const endpoint = inTauri() ? viaProxy(url) : url
-    const res = await fetch(endpoint)
-    if (!res.ok) throw new Error(`HTTP ${res.status}`)
-    return await res.text()
-  }
-
   async function runTarget() {
     const url = target.trim()
     if (!url) return
     try {
-      const html = await fetchHtml(url)
+      const html = await fetchPage(url)
       const r = runScripts(scripts, url, html)
       setResults(r)
       if (r.length === 0) notice('没有脚本匹配这个地址')
@@ -233,7 +249,7 @@ export default function UserscriptPage() {
   async function runSingle(script: UserScript) {
     const url = target.trim() || script.matches[0]
     try {
-      const html = await fetchHtml(url)
+      const html = await fetchPage(url)
       setResults([runScript(script, url, html)])
     } catch (e) {
       notice(`执行失败：${e instanceof Error ? e.message : String(e)}`)
@@ -394,7 +410,16 @@ export default function UserscriptPage() {
         </div>
       </div>
 
-      <LogView results={results} />
+      <LogView
+        results={results}
+        onPlay={(u) => setPlaying(u)}
+        onCopy={(u) => {
+          void navigator.clipboard?.writeText(u)
+          notice('已复制地址')
+        }}
+      />
+
+      {playing && <PlayerOverlay url={playing} onClose={() => setPlaying(null)} />}
     </div>
   )
 }
