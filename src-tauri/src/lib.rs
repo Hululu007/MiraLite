@@ -1,5 +1,6 @@
 mod cat;
 mod stream_proxy;
+mod sys;
 mod tmdb;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -29,7 +30,9 @@ pub fn run() {
       tmdb::tmdb_get_config,
       tmdb::tmdb_set_config,
       tmdb::tmdb_test,
-      tmdb::tmdb_rankings
+      tmdb::tmdb_rankings,
+      sys::open_url,
+      sys::has_app
     ])
     .run(tauri::generate_context!())
     .expect("error while building tauri application");

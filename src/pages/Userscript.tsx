@@ -1,5 +1,6 @@
 import { useMemo, useRef, useState } from 'react'
-import { Copy, FileCode2, Play, Plus, Trash2, Upload, Download, Wand2 } from 'lucide-react'
+import { Copy, CornerUpLeft, FileCode2, Play, Plus, Trash2, Upload, Download, Wand2 } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import PlayerOverlay from '../components/PlayerOverlay'
 import { inTauri } from '../lib/cat'
 import {
@@ -196,6 +197,7 @@ function LogView({
 }
 
 export default function UserscriptPage() {
+  const navigate = useNavigate()
   const scripts = useUserScripts()
   const [draft, setDraft] = useState('')
   const [target, setTarget] = useState('')
@@ -279,8 +281,16 @@ export default function UserscriptPage() {
             导入 .user.js，按 @match 在抓回的页面上执行，用 GM_* 兼容层改写 DOM 或抠出播放地址
           </p>
         </div>
-        <div className="flex items-center gap-2 text-[11px] text-muted">
-          共 {scripts.length} 个 · 启用 {scripts.filter((s) => s.enabled).length}
+        <div className="flex items-center gap-3">
+          <span className="text-[11px] text-muted">
+            共 {scripts.length} 个 · 启用 {scripts.filter((s) => s.enabled).length}
+          </span>
+          <button
+            onClick={() => navigate('/userscript')}
+            className="glass-chip flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-fg/75"
+          >
+            <CornerUpLeft size={11} /> 返回首页
+          </button>
         </div>
       </div>
 
