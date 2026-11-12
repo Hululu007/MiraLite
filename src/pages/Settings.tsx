@@ -1,6 +1,10 @@
 import { actions, useLibrary } from '../lib/store'
+import LocalLibrary from '../components/LocalLibrary'
 import SourcesSection from '../components/SourcesSection'
+import SiteSwitches from '../components/SiteSwitches'
 import TmdbSection from '../components/TmdbSection'
+import { clearAllLineFails, failedLineCount } from '../lib/lines'
+import { clearPlayback, usePlayback } from '../lib/playback'
 
 function Toggle({ on, onChange }: { on: boolean; onChange: (v: boolean) => void }) {
   return (
@@ -42,6 +46,7 @@ function Row({ title, desc, right }: { title: string; desc: string; right: React
 
 export default function SettingsPage() {
   const { prefs, progress, watchlist } = useLibrary()
+  const playback = usePlayback()
 
   return (
     <div className="px-10 pb-16 pt-7">
@@ -91,11 +96,43 @@ export default function SettingsPage() {
         <SourcesSection />
       </Section>
 
+      <Section title="本地媒体库">
+        <LocalLibrary />
+      </Section>
+
+      <Section title="站点">
+        <SiteSwitches />
+      </Section>
+
       <Section title="数据">
         <Row title="片单" desc={`${watchlist.length} 部已收藏`} right={<span className="text-[12px] text-muted">—</span>} />
         <Row
-          title="观看记录"
-          desc={`${Object.keys(progress).length} 条播放进度，仅保存在本机`}
+          title="继续观看"
+          desc={`${playback.length} 部片子记着看到哪，仅保存在本机`}
+          right={
+            <button
+              onClick={() => clearPlayback()}
+              className="glass-btn rounded-lg px-2.5 py-1 text-[11.5px] text-muted transition hover:text-red-300"
+            >
+              清空
+            </button>
+          }
+        />
+        <Row
+          title="线路偏好"
+          desc={`${failedLineCount()} 条线路带着失败记录，会被自动排到后面`}
+          right={
+            <button
+              onClick={() => clearAllLineFails()}
+              className="glass-btn rounded-lg px-2.5 py-1 text-[11.5px] text-muted transition hover:text-red-300"
+            >
+              重置
+            </button>
+          }
+        />
+        <Row
+          title="演示媒体库进度"
+          desc={`${Object.keys(progress).length} 条，仅保存在本机`}
           right={
             <button
               onClick={() => {

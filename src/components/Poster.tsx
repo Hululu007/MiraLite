@@ -23,26 +23,38 @@ export default function Poster({ item, width = 168, onOpen, progress, badge }: P
       className="glass-poster group relative shrink-0 overflow-hidden rounded-2xl text-left transition-transform duration-300 ease-out hover:z-10 hover:scale-[1.045] focus:outline-none"
       style={{ width, height: h }}
     >
-      <div
-        className="absolute inset-0"
-        style={{
-          background: `linear-gradient(155deg, hsl(${hue} 62% 24%) 0%, hsl(${(hue + 28) % 360} 48% 12%) 55%, #0b0b0f 100%)`,
-        }}
-      />
-      <div
-        className="absolute inset-0 opacity-60 mix-blend-overlay"
-        style={{
-          background: `radial-gradient(circle at 28% 18%, hsl(${hue} 90% 55% / 0.55), transparent 62%)`,
-        }}
-      />
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span
-          className="text-[56px] font-semibold tracking-tight opacity-25"
-          style={{ color: `hsl(${hue} 80% 78%)` }}
-        >
-          {initials(item.title)}
-        </span>
-      </div>
+      {item.poster ? (
+        <img
+          src={item.poster}
+          alt=""
+          referrerPolicy="no-referrer"
+          loading="lazy"
+          className="absolute inset-0 h-full w-full object-cover"
+        />
+      ) : (
+        <>
+          <div
+            className="absolute inset-0"
+            style={{
+              background: `linear-gradient(155deg, hsl(${hue} 62% 24%) 0%, hsl(${(hue + 28) % 360} 48% 12%) 55%, #0b0b0f 100%)`,
+            }}
+          />
+          <div
+            className="absolute inset-0 opacity-60 mix-blend-overlay"
+            style={{
+              background: `radial-gradient(circle at 28% 18%, hsl(${hue} 90% 55% / 0.55), transparent 62%)`,
+            }}
+          />
+          <div className="absolute inset-0 flex items-center justify-center">
+            <span
+              className="text-[56px] font-semibold tracking-tight opacity-25"
+              style={{ color: `hsl(${hue} 80% 78%)` }}
+            >
+              {initials(item.title)}
+            </span>
+          </div>
+        </>
+      )}
 
       <div className="absolute inset-x-0 bottom-0 h-2/3 bg-gradient-to-t from-black/85 via-black/35 to-transparent" />
       <div className="glass-sheen" />

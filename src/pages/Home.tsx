@@ -11,6 +11,7 @@ import {
   Search,
   Star,
 } from 'lucide-react'
+import { fmtTime, removePlayback, usePlayback } from '../lib/playback'
 import {
   tmdbRankings,
   onRankingsRefresh,
@@ -328,6 +329,81 @@ function PosterArt({ item }: { item: TmdbItem }) {
   )
 }
 
+/** 首页「继续观看」：接着上次的集与秒数播，长按/悬停可移除 */
+function ContinueRow() {
+  const list = usePlayback()
+  const navigate = useNavigate()
+  const items = [...list].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 12)
+  if (items.length === 0) return null
+  return (
+    <section className="animate-fade-up mb-8">
+      <div className="mb-3 flex items-end justify-between px-10">
+        <div>
+          <h2 className="text-[15px] font-semibold tracking-tight text-fg">继续观看</h2>
+          <p className="mt-0.5 text-[11.5px] text-muted">接着上次看到的位置播</p>
+        </div>
+      </div>
+      <div className="no-scrollbar flex gap-3 overflow-x-auto px-10 pb-2">
+        {items.map((e) => {
+          const pct = e.duration > 0 ? Math.min(100, Math.round((e.position / e.duration) * 100)) : 0
+          const hue = (e.name.charCodeAt(0) * 37 + (e.name.charCodeAt(1) || 11) * 13) % 360
+          return (
+            <div key={e.key} className="group relative w-[152px] shrink-0">
+              <button
+                onClick={() =>
+                  navigate(
+                    `/cat/item?site=${encodeURIComponent(e.siteKey)}&id=${encodeURIComponent(e.vodId)}&resume=1`,
+                  )
+                }
+                className="block w-full text-left"
+              >
+                <div className="glass-poster relative h-[214px] overflow-hidden rounded-xl">
+                  {e.pic ? (
+                    <img
+                      src={e.pic}
+                      alt=""
+                      referrerPolicy="no-referrer"
+                      loading="lazy"
+                      className="h-full w-full object-cover transition group-hover:scale-[1.04]"
+                    />
+                  ) : (
+                    <div
+                      className="flex h-full w-full items-center justify-center px-2 text-center text-[13px] text-white/50"
+                      style={{
+                        background: `linear-gradient(155deg, hsl(${hue} 55% 24%) 0%, hsl(${(hue + 32) % 360} 44% 11%) 60%, #0b0b0f 100%)`,
+                      }}
+                    >
+                      {e.name.slice(0, 6)}
+                    </div>
+                  )}
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/45 to-transparent px-2 pb-1.5 pt-6">
+                    <div className="h-[3px] overflow-hidden rounded-full bg-white/25">
+                      <div className="h-full rounded-full bg-gold" style={{ width: `${pct}%` }} />
+                    </div>
+                    <p className="mt-1 truncate text-[10px] text-white/70">
+                      {e.epName} · {fmtTime(e.position)}
+                      {e.duration > 0 ? ` / ${fmtTime(e.duration)}` : ''}
+                    </p>
+                  </div>
+                </div>
+                <p className="mt-2 truncate text-[12px] text-fg/90">{e.name}</p>
+                <p className="mt-0.5 truncate text-[10.5px] text-muted">{e.siteName}</p>
+              </button>
+              <button
+                onClick={() => removePlayback(e.key)}
+                title="从继续观看移除"
+                className="absolute right-1 top-1 hidden h-6 w-6 items-center justify-center rounded-full bg-black/65 text-[13px] text-white/70 hover:text-red-300 group-hover:flex"
+              >
+                ×
+              </button>
+            </div>
+          )
+        })}
+      </div>
+    </section>
+  )
+}
+
 export default function HomePage() {
   const navigate = useNavigate()
   const [groups, setGroups] = useState<TmdbGroup[] | null>(null)
@@ -430,6 +506,8 @@ export default function HomePage() {
           stale={stale}
         />
       )}
+
+      <ContinueRow />
 
       {loading && !groups && (
         <div className="glass-panel mx-10 mt-16 flex flex-col items-center gap-3 rounded-2xl px-6 py-10 text-[12px] text-muted">

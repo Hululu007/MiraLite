@@ -20,13 +20,28 @@ import {
   isPanLine,
   markPanSite,
   parsePlayLines,
-  pickBestLine,
   type CatSite,
   type CatVod,
   type PlayingSource,
 } from '../lib/cat'
 import { cacheKey, ensureSites, recallVod, withTimeout } from '../lib/catSession'
+import {
+  clearLineFailed,
+  markLineFailed,
+  rankLineIndexes,
+} from '../lib/lines'
+import { fmtTime, getPlayback, savePlayback } from '../lib/playback'
+import { useLibrary } from '../lib/store'
 import { probeWithScripts } from '../lib/userscript'
+
+/** 首发线路：跳过有失败记录的线，再跳过网盘线 */
+function bestLineIndex(siteKey: string, parsed: { flag: string }[]): number {
+  const ranked = rankLineIndexes(siteKey, parsed as never)
+  for (const i of ranked) {
+    if (!isPanLine(parsed[i].flag)) return i
+  }
+  return ranked[0] ?? 0
+}
 
 export default function CatDetailPage() {
   const [params] = useSearchParams()
@@ -45,10 +60,18 @@ export default function CatDetailPage() {
   const [playing, setPlaying] = useState<PlayingSource | null>(null)
   const [exhausted, setExhausted] = useState(false)
   const [tip, setTip] = useState<string | null>(null)
+  /** 当前正在播的线路与集，进度记忆、失败记忆、自动连播都靠它 */
+  const [curEp, setCurEp] = useState<{ flag: string; id: string; name: string; index: number } | null>(
+    null,
+  )
+  const [resumeAt, setResumeAt] = useState(0)
   const queue = useRef<{ flag: string; id: string }[]>([])
   const autoBusy = useRef(false)
   /** 一次播放里只让用户脚本抢救一回，避免脚本给出坏地址后无限重试 */
   const rescued = useRef(false)
+  /** 从「继续观看」带 resume=1 进来时只自动续播一次 */
+  const autoResumed = useRef(false)
+  const { prefs } = useLibrary()
 
   // 站点对象必须来自 config（带着 /spider/xxx/3 这种 api 路径），自己按 key 拼会 404
   const [site, setSite] = useState<CatSite | null>(null)
@@ -81,7 +104,7 @@ export default function CatDetailPage() {
       const full: CatVod = { ...(cached?.vod ?? {}), ...(r.list?.[0] ?? {}) }
       if (!full.vod_name) throw new Error('这个站点没返回详情，可能条目已失效')
       setVod(full)
-      setLineIndex(pickBestLine(parsePlayLines(full)))
+      setLineIndex(bestLineIndex(siteKey, parsePlayLines(full)))
     } catch (e) {
       setErr(e instanceof Error ? e.message : String(e))
     } finally {
@@ -98,22 +121,23 @@ export default function CatDetailPage() {
   const line = lines[lineIndex]
   const first = line?.episodes[0]
 
-  /** 同一条线路播不动时，按「第几集」去其它线路找同名集做兜底 */
+  /** 同一条线路播不动时，按「第几集」去其它线路找同名集做兜底；有失败记录的线排后面 */
   const buildQueue = useCallback(
     (flag: string, id: string) => {
       const cur = lines.findIndex((l) => l.flag === flag)
       const epIdx = cur >= 0 ? Math.max(0, lines[cur].episodes.findIndex((e) => e.id === id)) : 0
       const q: { flag: string; id: string }[] = []
-      for (const [i, l] of lines.entries()) {
+      for (const i of rankLineIndexes(siteKey, lines)) {
         if (i === cur) continue
-        if (isPanLine(l.flag) || l.episodes.length === 0) continue
+        const l = lines[i]
+        if (!l || isPanLine(l.flag) || l.episodes.length === 0) continue
         const ep = l.episodes[Math.min(epIdx, l.episodes.length - 1)]
         if (ep) q.push({ flag: l.flag, id: ep.id })
         if (q.length >= 5) break
       }
       queue.current = q
     },
-    [lines],
+    [lines, siteKey],
   )
 
   /** 所有线路都失败时的最后一招：把当前地址交给用户脚本，看能不能抛出别的直链 */
@@ -137,6 +161,8 @@ export default function CatDetailPage() {
     if (!site || autoBusy.current) return
     autoBusy.current = true
     try {
+      // 当前这条线路播不动，记一笔，下次进详情页自动把它排后面
+      if (curEp) markLineFailed(siteKey, curEp.flag)
       if (queue.current.length === 0) {
         if (await rescueWithScripts()) return
         setTip('这条源播不动，换一个站点试试')
@@ -150,12 +176,22 @@ export default function CatDetailPage() {
         try {
           const r = await catPlay(site, next.flag, next.id)
           if (r.url && r.url.startsWith('http')) {
+            const l = lines.find((x) => x.flag === next.flag)
+            const idx = l ? l.episodes.findIndex((e) => e.id === next.id) : -1
+            setCurEp({
+              flag: next.flag,
+              id: next.id,
+              name: idx >= 0 ? l!.episodes[idx].name : (curEp?.name ?? ''),
+              index: idx >= 0 ? idx : (curEp?.index ?? 0),
+            })
+            setResumeAt(0)
+            clearLineFailed(siteKey, next.flag)
             setPlaying({ url: r.url, header: r.header })
             setTip(null)
             return
           }
         } catch {
-          /* 换下一条 */
+          markLineFailed(siteKey, next.flag)
         }
       }
       if (await rescueWithScripts()) return
@@ -163,10 +199,10 @@ export default function CatDetailPage() {
     } finally {
       autoBusy.current = false
     }
-  }, [site, rescueWithScripts])
+  }, [site, rescueWithScripts, curEp, siteKey, lines])
 
   const play = useCallback(
-    async (flag: string, id: string) => {
+    async (flag: string, id: string, opts: { resume?: boolean } = {}) => {
       if (!site) {
         setErr('CAT 引擎还没就绪，稍等再点一次')
         return
@@ -177,24 +213,41 @@ export default function CatDetailPage() {
       setBusy(true)
       rescued.current = false
       buildQueue(flag, id)
+      const curLine = lines.find((l) => l.flag === flag)
+      const epIndex = curLine ? curLine.episodes.findIndex((e) => e.id === id) : -1
+      const epName = epIndex >= 0 ? curLine!.episodes[epIndex].name : ''
+      setCurEp({ flag, id, name: epName, index: Math.max(0, epIndex) })
+
+      // 续播：同一集有历史进度就接着看，换集则从头
+      const rec = vod ? getPlayback(siteKey, vod.vod_id) : null
+      const resume =
+        opts.resume !== false && rec && rec.lineFlag === flag && rec.epId === id
+          ? rec.position
+          : 0
+      setResumeAt(resume)
+
       if (vod) {
-        const curLine = lines.find((l) => l.flag === flag)
         trackChase({
           siteKey,
           siteName: site?.name || siteName,
           vod,
-          episode: curLine?.episodes.find((e) => e.id === id)?.name,
+          episode: epName,
           episodeCount: curLine?.episodes.length,
         })
       }
       try {
         const r = await catPlay(site, flag, id)
         if (!r.url) throw new Error(r.msg || '这条线路没有返回可用地址')
-        if (r.url.startsWith('http')) setPlaying({ url: r.url, header: r.header })
-        else throw new Error(`该线路返回的是可解析片段，暂时不支持：${r.url.slice(0, 60)}`)
+        if (r.url.startsWith('http')) {
+          clearLineFailed(siteKey, flag)
+          setPlaying({ url: r.url, header: r.header })
+        } else {
+          throw new Error(`该线路返回的是可解析片段，暂时不支持：${r.url.slice(0, 60)}`)
+        }
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
         setErr(msg)
+        markLineFailed(siteKey, flag)
         if (isPanAuthError(msg)) {
           setNeedPanLogin(true)
           markPanSite(siteKey)
@@ -206,9 +259,41 @@ export default function CatDetailPage() {
     [site, siteKey, siteName, vod, lines, buildQueue],
   )
 
+  /** 播下一集；没有下一集就回到选集顶部 */
+  const playNext = useCallback(() => {
+    if (!curEp) return
+    const curLine = lines.find((l) => l.flag === curEp.flag)
+    const next = curLine?.episodes[curEp.index + 1]
+    if (!next) {
+      setTip('这一集已经是最后一集了')
+      return
+    }
+    setPlaying(null)
+    void play(curEp.flag, next.id, { resume: false })
+  }, [curEp, lines, play])
+
+  // 从首页「继续观看」带 resume=1 进来：自动接上次的线路与集
+  useEffect(() => {
+    if (autoResumed.current || !site || !vod || lines.length === 0) return
+    if (params.get('resume') !== '1') return
+    const rec = getPlayback(siteKey, vodId)
+    if (!rec) return
+    autoResumed.current = true
+    const l = lines.find((x) => x.flag === rec.lineFlag) ?? lines[0]
+    const ep = l.episodes.find((e) => e.id === rec.epId) ?? l.episodes[0]
+    if (!ep) return
+    const i = lines.findIndex((x) => x.flag === l.flag)
+    if (i >= 0) setLineIndex(i)
+    void play(l.flag, ep.id, { resume: true })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [site, vod, lines])
+
   const goSearch = () => {
     if (vod?.vod_name) navigate(`/cat/search?name=${encodeURIComponent(vod.vod_name)}`)
   }
+
+  /** 上次看到哪（渲染时读一次，够用；不在播放中频繁刷新） */
+  const saved = getPlayback(siteKey, vodId)
 
   return (
     <div className="h-full overflow-y-auto pb-16">
@@ -288,7 +373,7 @@ export default function CatDetailPage() {
               ) : (
                 <Play size={18} fill="currentColor" className="transition group-hover:scale-110" />
               )}
-              {busy ? '正在取直链…' : '立即播放'}
+              {busy ? '正在取直链…' : saved ? `继续观看 · ${saved.epName} ${fmtTime(saved.position)}` : '立即播放'}
             </button>
             <p className="mt-2 text-[11px] text-muted/85">
               {line.flag} · {first.name}
@@ -403,6 +488,34 @@ export default function CatDetailPage() {
           url={playing.url}
           header={playing.header}
           tip={tip}
+          title={vod ? `${vod.vod_name}${curEp?.name ? ` · ${curEp.name}` : ''}` : curEp?.name}
+          episodes={line?.episodes}
+          activeEpId={curEp?.id}
+          onPickEpisode={(id) => {
+            if (!curEp) return
+            setPlaying(null)
+            void play(curEp.flag, id)
+          }}
+          resumeAt={resumeAt}
+          onProgress={(pos, dur) => {
+            if (!vod || !curEp) return
+            savePlayback(
+              {
+                siteKey,
+                siteName: site?.name || siteName,
+                vod,
+                lineFlag: curEp.flag,
+                epName: curEp.name,
+                epId: curEp.id,
+                epIndex: curEp.index,
+              },
+              pos,
+              dur,
+            )
+          }}
+          onEnded={() => {
+            if (prefs.autoplayNext) playNext()
+          }}
           onFail={() => void autoNext()}
           onSwitch={exhausted ? goSearch : undefined}
           onClose={() => {

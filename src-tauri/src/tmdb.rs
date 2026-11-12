@@ -52,7 +52,7 @@ fn config_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join("tmdb.json"))
 }
 
-fn load_config(app: &AppHandle) -> TmdbConfig {
+pub(crate) fn load_config(app: &AppHandle) -> TmdbConfig {
     let path = match config_path(app) { Ok(p) => p, Err(_) => return TmdbConfig::default() };
     match std::fs::read_to_string(&path) {
         Ok(s) => serde_json::from_str::<TmdbConfig>(&s).unwrap_or_default(),
@@ -80,7 +80,7 @@ fn client() -> Result<reqwest::Client, String> {
 }
 
 /// 请求 TMDB：v4 token 走 Bearer，v3 key 走 query
-async fn request(cfg: &TmdbConfig, endpoint: &str, extra: &[(&str, &str)]) -> Result<Value, String> {
+pub(crate) async fn request(cfg: &TmdbConfig, endpoint: &str, extra: &[(&str, &str)]) -> Result<Value, String> {
     if cfg.api_key.trim().is_empty() {
         return Err("还没有配置 TMDB API Key".to_string());
     }
@@ -171,7 +171,7 @@ const RANKINGS: [(&str, &str, &str, &str); 5] = [
 ];
 
 /// 规范化单条 TMDB 结果 -> 前端 TmdbItem
-fn normalize(x: &Value, media_type: &str) -> Value {
+pub(crate) fn normalize(x: &Value, media_type: &str) -> Value {
     let title = x.get("title").or_else(|| x.get("name")).and_then(|v| v.as_str()).unwrap_or("");
     let original = x.get("original_title").or_else(|| x.get("original_name")).and_then(|v| v.as_str()).unwrap_or("");
     let poster = x.get("poster_path").and_then(|v| v.as_str()).unwrap_or("");
@@ -218,4 +218,21 @@ pub async fn tmdb_rankings(app: AppHandle) -> Result<Value, String> {
         return Err(last_err.unwrap_or_else(|| "拉取 TMDB 榜单失败".to_string()));
     }
     Ok(json!({ "groups": groups, "live": true }))
+}
+
+/// 供本地媒体库刮削复用（跨模块访问私有实现）
+pub(crate) fn load_config_pub(app: &AppHandle) -> TmdbConfig {
+  load_config(app)
+}
+
+pub(crate) async fn request_pub(
+  cfg: &TmdbConfig,
+  endpoint: &str,
+  extra: &[(&str, &str)],
+) -> Result<Value, String> {
+  request(cfg, endpoint, extra).await
+}
+
+pub(crate) fn normalize_pub(x: &Value, media_type: &str) -> Value {
+  normalize(x, media_type)
 }

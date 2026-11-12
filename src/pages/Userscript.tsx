@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from 'react'
-import { Copy, CornerUpLeft, FileCode2, Play, Plus, Trash2, Upload, Download, Wand2 } from 'lucide-react'
+import { Copy, CornerUpLeft, FileCode2, Loader2, Play, Plus, Search, Store, Trash2, Upload, Download, Wand2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
 import PlayerOverlay from '../components/PlayerOverlay'
 import { inTauri } from '../lib/cat'
@@ -15,6 +15,12 @@ import {
   type RunResult,
   type UserScript,
 } from '../lib/userscript'
+import {
+  CURATED,
+  installMarketScript,
+  searchOpenUserJS,
+  type MarketHit,
+} from '../lib/scriptMarket'
 
 const SAMPLE = `// ==UserScript==
 // @name         示例 · 抓取页面里的 m3u8
@@ -207,6 +213,13 @@ export default function UserscriptPage() {
   const [playing, setPlaying] = useState<string | null>(null)
   const fileRef = useRef<HTMLInputElement>(null)
 
+  const [mkOpen, setMkOpen] = useState(false)
+  const [mkKw, setMkKw] = useState('')
+  const [mkHits, setMkHits] = useState<MarketHit[]>([])
+  const [mkBusy, setMkBusy] = useState(false)
+  const [mkInstalling, setMkInstalling] = useState<string | null>(null)
+  const [mkErr, setMkErr] = useState('')
+
   const preview = useMemo(() => (draft.trim() ? parseUserScript(draft) : null), [draft])
   const hits = useMemo(() => (target.trim() ? pickScripts(scripts, target.trim()) : []), [scripts, target])
 
@@ -234,6 +247,37 @@ export default function UserscriptPage() {
     setDraft('')
     setEditing(null)
     notice(`已${editing ? '保存' : '导入'}「${parsed.name}」`)
+  }
+
+  async function searchMarket(kw: string) {
+    const q = kw.trim()
+    if (!q) return
+    setMkOpen(true)
+    setMkBusy(true)
+    setMkErr('')
+    setMkHits([])
+    try {
+      const hits = await searchOpenUserJS(q)
+      setMkHits(hits)
+      if (hits.length === 0) setMkErr('没搜到相关脚本，换个关键词试试')
+    } catch (e) {
+      setMkErr(`搜索失败：${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setMkBusy(false)
+    }
+  }
+
+  async function installFromMarket(hit: MarketHit) {
+    setMkInstalling(hit.id)
+    try {
+      const parsed = await installMarketScript(hit)
+      scriptActions.add(parsed)
+      notice(`已从市场导入「${parsed.name}」`)
+    } catch (e) {
+      notice(`导入失败：${e instanceof Error ? e.message : String(e)}`)
+    } finally {
+      setMkInstalling(null)
+    }
   }
 
   function importFile(f: File) {
@@ -304,6 +348,96 @@ export default function UserscriptPage() {
             <CornerUpLeft size={11} /> 返回首页
           </button>
         </div>
+      </div>
+
+      {/* 脚本市场 */}
+      <div className="glass-panel mb-6 overflow-hidden rounded-2xl">
+        <div className="flex items-center justify-between border-b border-white/10 px-5 py-3">
+          <div className="flex items-center gap-2 text-[12.5px] font-medium text-fg/85">
+            <Store size={13} className="text-gold" /> 脚本市场
+            <span className="text-[10.5px] font-normal text-muted">
+              OpenUserJS · 搜到直接导入
+            </span>
+          </div>
+          <button
+            onClick={() => setMkOpen((v) => !v)}
+            className="glass-chip rounded-md px-2 py-1 text-[11px] text-fg/75"
+          >
+            {mkOpen ? '收起' : '展开'}
+          </button>
+        </div>
+        {mkOpen && (
+          <div className="px-5 py-4">
+            <div className="flex gap-2">
+              <input
+                value={mkKw}
+                onChange={(e) => setMkKw(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') void searchMarket(mkKw)
+                }}
+                placeholder="搜什么脚本？比如 VIP视频解析 / bilibili / youtube"
+                className="glass-input h-9 flex-1 rounded-lg px-3 text-[11.5px] text-fg placeholder:text-muted/70"
+              />
+              <button
+                onClick={() => void searchMarket(mkKw)}
+                disabled={mkBusy || !mkKw.trim()}
+                className="flex items-center gap-1 rounded-lg bg-gold/90 px-3 text-[11.5px] font-medium text-black transition disabled:opacity-40"
+              >
+                {mkBusy ? <Loader2 size={12} className="animate-spin" /> : <Search size={12} />}
+                {mkBusy ? '搜索中' : '搜索'}
+              </button>
+            </div>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {CURATED.map((c) => (
+                <button
+                  key={c.kw}
+                  title={c.desc}
+                  onClick={() => {
+                    setMkKw(c.kw)
+                    void searchMarket(c.kw)
+                  }}
+                  className="glass-chip rounded-md px-2 py-1 text-[10.5px] text-fg/70 hover:text-gold"
+                >
+                  {c.name}
+                </button>
+              ))}
+            </div>
+            {mkErr && <div className="mt-3 text-[11px] text-amber-200/90">{mkErr}</div>}
+            {mkHits.length > 0 && (
+              <div className="no-scrollbar mt-3 max-h-[340px] overflow-y-auto rounded-xl border border-white/8">
+                {mkHits.map((h) => (
+                  <div
+                    key={h.id}
+                    className="flex items-start gap-3 border-b border-white/6 px-3 py-2.5 last:border-b-0"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-[12px] text-fg/90">
+                        {h.name}
+                        {h.version && (
+                          <span className="ml-1.5 text-[10px] text-muted">v{h.version}</span>
+                        )}
+                      </div>
+                      <div className="mt-0.5 line-clamp-2 text-[10.5px] leading-relaxed text-muted">
+                        {h.desc}
+                      </div>
+                      <div className="mt-1 text-[10px] text-muted/70">
+                        {h.author}
+                        {h.installs ? ` · ${h.installs.toLocaleString()} 次安装` : ''}
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => void installFromMarket(h)}
+                      disabled={mkInstalling === h.id}
+                      className="glass-chip shrink-0 rounded-md px-2.5 py-1 text-[11px] text-gold disabled:opacity-50"
+                    >
+                      {mkInstalling === h.id ? '导入中…' : '导入'}
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {/* 导入区 */}

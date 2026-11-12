@@ -18,6 +18,7 @@ import {
   type CatSite,
   type CatVod,
 } from './cat'
+import { applySitePrefs } from './sitePrefs'
 
 /** 旧版单地址存档：只用于迁移到新的多订阅源列表 */
 export const CAT_URL_KEY = 'miralite.cat.url'
@@ -107,6 +108,7 @@ export function removeSubscription(id: string): CatSubscription[] {
 /** 清空订阅切换后失效的本地缓存（热门聚合 + 详情暂存） */
 function clearCatCaches(): void {
   sitesPromise = null
+  rawSitesPromise = null
   try {
     localStorage.removeItem('miralite.hot.v1')
     sessionStorage.removeItem('miralite.vodcache.v1')
@@ -164,22 +166,44 @@ export function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
 }
 
 let sitesPromise: Promise<CatSite[]> | null = null
+let rawSitesPromise: Promise<CatSite[]> | null = null
 
-/** 拿到全部站点（进程内缓存一次），引擎没起来就抛错 */
-export function ensureSites(force = false): Promise<CatSite[]> {
-  if (!sitesPromise || force) {
-    sitesPromise = (async () => {
-      // 引擎没起、或在用的是另一个订阅时，自动切到当前启用的源
+/** 订阅里的全部站点（不受「站点开关」影响），设置页用 */
+export function ensureRawSites(force = false): Promise<CatSite[]> {
+  if (!rawSitesPromise || force) {
+    rawSitesPromise = (async () => {
       await ensureEngine()
       const cfg = await catConfig()
       if (cfg.length === 0) throw new Error('这个订阅里没有任何可用站点')
       return cfg
     })().catch((e) => {
-      sitesPromise = null
+      rawSitesPromise = null
       throw e
     })
   }
+  return rawSitesPromise
+}
+
+/** 拿到可用的站点（进程内缓存一次，已剔除用户在设置里关掉的站点） */
+export function ensureSites(force = false): Promise<CatSite[]> {
+  if (!sitesPromise || force) {
+    sitesPromise = ensureRawSites(force)
+      .then((cfg) => {
+        const usable = applySitePrefs(cfg)
+        if (usable.length === 0) throw new Error('所有站点都被关掉了，去「设置 → 站点开关」打开几个')
+        return usable
+      })
+      .catch((e) => {
+        sitesPromise = null
+        throw e
+      })
+  }
   return sitesPromise
+}
+
+/** 站点开关变化后清掉站点缓存，下次调用重新拉配置 */
+export function resetSiteCache(): void {
+  sitesPromise = null
 }
 
 export function siteOf(key: string, name?: string): CatSite {

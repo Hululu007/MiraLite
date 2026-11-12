@@ -11,6 +11,8 @@ export interface MediaItem {
   overview?: string
   /** 用于生成确定性渐变海报的色相 */
   hue: number
+  /** TMDB 刮削来的海报地址（可选，有就优先渲染图片） */
+  poster?: string
   streamUrl?: string
   sourceId?: string
   group?: string

@@ -1,4 +1,5 @@
 mod cat;
+mod local;
 mod stream_proxy;
 mod sys;
 mod tmdb;
@@ -31,6 +32,9 @@ pub fn run() {
       tmdb::tmdb_set_config,
       tmdb::tmdb_test,
       tmdb::tmdb_rankings,
+      local::scan_media_dir,
+      local::pick_media_folder,
+      local::tmdb_search,
       sys::open_url,
       sys::has_app,
     ])
