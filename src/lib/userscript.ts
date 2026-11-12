@@ -108,10 +108,7 @@ function globToRegExp(glob: string): RegExp | null {
       return null
     }
   }
-  const escaped = s
-    .replace(/[.+^${}()|[\]\\]/g, '\\$&')
-    .replace(/\*/g, '.*')
-    .replace(/\.\*\\.\*/g, '\\..*') // *.example.com 里第一个 * 不能吃掉协议
+  const escaped = s.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*')
   return new RegExp(`^${escaped}$`, 'i')
 }
 
@@ -508,17 +505,57 @@ const GM_HEAD = [
  * 生成一段可直接丢进内嵌 webview 执行的 JS：GM_* 兼容层 + 用户脚本本体。
  * 与浏览器里的 Tampermonkey 行为对齐（document-end 时机），脚本出错不影响其它脚本。
  */
-export function buildInjectScript(s: UserScript): string {
+/** 运行时的 @match 判定（与 TS 里的 matchesUrl 同一套规则），用于站内跳转后仍能命中对应脚本 */
+const MATCH_JS = [
+  'var __mlVariants = function (u) {',
+  '  var out = [u, u.split("#")[0]];',
+  '  for (var i = 0; i < 2; i++) { var v = out[i]; if (!v) continue; out.push(v.charAt(v.length - 1) === "/" ? v.slice(0, -1) : v + "/"); }',
+  '  var uniq = [];',
+  '  for (var j = 0; j < out.length; j++) { if (out[j] && uniq.indexOf(out[j]) < 0) uniq.push(out[j]); }',
+  '  return uniq;',
+  '};',
+  'var __mlRe = function (g) {',
+  '  var s = String(g || "").trim();',
+  '  if (!s) return null;',
+  '  if (s.length > 2 && s.charAt(0) === "/" && s.charAt(s.length - 1) === "/") { try { return new RegExp(s.slice(1, -1)); } catch (e) { return null; } }',
+  '  var SPECIAL = ".+^$()[]{}|\\\\";',
+  '  var out = "";',
+  '  for (var i = 0; i < s.length; i++) {',
+  '    var ch = s.charAt(i);',
+  '    if (ch === "*") { out += ".*"; }',
+  '    else if (SPECIAL.indexOf(ch) >= 0) { out += "\\\\" + ch; }',
+  '    else { out += ch; }',
+  '  }',
+  '  try { return new RegExp("^" + out + "$", "i"); } catch (e) { return null; }',
+  '};',
+  'var __mlTest = function (list, variants) {',
+  '  for (var i = 0; i < (list || []).length; i++) { var re = __mlRe(list[i]); if (!re) continue; for (var j = 0; j < variants.length; j++) { if (re.test(variants[j])) return true; } }',
+  '  return false;',
+  '};',
+  'var __mlMatch = function (meta) {',
+  '  var v = __mlVariants(String(location.href));',
+  '  if (!__mlTest(meta.matches, v)) return false;',
+  '  return !__mlTest(meta.excludes, v);',
+  '};',
+].join('\n')
+
+export function buildInjectScript(s: UserScript, opts?: { guard?: boolean }): string {
   const meta = JSON.stringify({
     id: s.id,
     name: s.name,
     namespace: s.namespace ?? '',
     version: s.version ?? '0.0.0',
+    matches: s.matches ?? [],
+    excludes: s.excludes ?? [],
   })
+  const guard = opts?.guard === true
   return [
     '(function () {',
     '  try {',
-    GM_HEAD.replace('__META__', meta),
+    guard ? `var META = ${meta};` : '',
+    guard ? MATCH_JS : '',
+    guard ? '    if (!__mlMatch(META)) return;' : '',
+    guard ? GM_HEAD.replace('var META = __META__;', '') : GM_HEAD.replace('__META__', meta),
     '    var RUN = function () {',
     '      try {',
     '        (function () {',
@@ -538,5 +575,16 @@ export function buildInjectScript(s: UserScript): string {
 
 /** 多个脚本拼成一个注入包，空数组返回空串（零注入开销） */
 export function buildInjectBundle(scripts: UserScript[]): string {
-  return scripts.map(buildInjectScript).join('\n;\n')
+  return scripts.map((s) => buildInjectScript(s)).join('\n;\n')
+}
+
+/**
+ * 内嵌 webview 用的注入包：把所有启用的脚本都带上，由页面运行时按 location.href 自行判定。
+ * 这样站内从首页跳进播放页时，只匹配播放页的脚本依然会被执行（对齐 Tampermonkey）。
+ */
+export function buildRuntimeBundle(scripts: UserScript[]): string {
+  return scripts
+    .filter((s) => s.enabled)
+    .map((s) => buildInjectScript(s, { guard: true }))
+    .join('\n;\n')
 }

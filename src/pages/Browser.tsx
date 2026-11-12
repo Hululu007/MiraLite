@@ -13,7 +13,7 @@ import {
   X,
 } from 'lucide-react'
 import { inTauri } from '../lib/cat'
-import { buildInjectBundle, pickScripts, useUserScripts } from '../lib/userscript'
+import { buildRuntimeBundle, pickScripts, useUserScripts } from '../lib/userscript'
 import {
   embedActions,
   embedClose,
@@ -133,13 +133,13 @@ export default function BrowserPage() {
   /** 站点一律在本 app 内打开（child webview），并把匹配该站点的用户脚本一起注入 */
   function openSite(name: string, url: string) {
     const hit = pickScripts(scripts, url)
-    const bundle = buildInjectBundle(hit)
+    // 注入包带上所有启用的脚本，由页面按当前地址自行判定：站内跳进播放页时也能生效
+    const bundle = buildRuntimeBundle(scripts)
     siteRef.current = url
     setSite({ name, url })
     setInjected(hit.length)
     void embedOpen(url, undefined, bundle ? [bundle] : []).then((n) => {
-      setInjected(n)
-      if (n > 0) flash(`已注入 ${n} 个用户脚本`)
+      if (n > 0 && hit.length > 0) flash(`已按地址注入 ${hit.length} 个用户脚本`)
     })
   }
 
@@ -154,14 +154,14 @@ export default function BrowserPage() {
   function reinject() {
     if (!site) return
     const hit = pickScripts(scripts, site.url)
-    const bundle = buildInjectBundle(hit)
+    const bundle = buildRuntimeBundle(scripts)
     if (!bundle) {
-      flash('该站点没有匹配的用户脚本')
+      flash('还没有启用的用户脚本')
       return
     }
     void embedEval(bundle)
     setInjected(hit.length)
-    flash(`已重新注入 ${hit.length} 个脚本`)
+    flash(hit.length > 0 ? `已重新注入 ${hit.length} 个脚本` : '当前页面没有匹配的用户脚本')
   }
 
   function flash(text: string) {
