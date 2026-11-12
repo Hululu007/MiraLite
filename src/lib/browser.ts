@@ -1,6 +1,6 @@
 /**
- * Edge 风格新标签页用到的小工具：打开外链、快捷磁贴存储。
- * MiraLite 没有内嵌浏览器内核，所以磁贴和搜索都交给系统浏览器打开。
+ * Edge 风格新标签页 + 应用内嵌浏览用到的小工具。
+ * 内嵌网页走 Rust 侧的 child webview（原生视图），点快捷方式不跳系统浏览器。
  */
 
 import { invoke } from '@tauri-apps/api/core'
@@ -15,18 +15,75 @@ export async function openUrl(url: string, browser?: string | null): Promise<voi
   await invoke('open_url', { url, browser: browser ?? null })
 }
 
-export async function hasApp(name: string): Promise<boolean> {
-  if (!inTauri()) return false
-  try {
-    return (await invoke('has_app', { name })) as boolean
-  } catch {
-    return false
+/* ------------------------------------------------------- 应用内嵌网页（child webview） */
+
+export interface Bounds {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
+/** 页面内给原生视图留的位置（逻辑像素，与 CSS 像素一致） */
+export const EMBED_BOX = {
+  left: 86, // 左侧胶囊菜单宽度
+  right: 12, // 主区右留白
+  top: 116, // 顶栏 64 + 内嵌工具条 40 + 上留白 12
+  bottom: 12,
+}
+
+export function embedBounds(): Bounds {
+  return {
+    x: EMBED_BOX.left,
+    y: EMBED_BOX.top,
+    w: window.innerWidth - EMBED_BOX.left - EMBED_BOX.right,
+    h: window.innerHeight - EMBED_BOX.top - EMBED_BOX.bottom,
   }
+}
+
+export async function embedOpen(url: string, b: Bounds = embedBounds()): Promise<void> {
+  if (!inTauri()) {
+    window.open(url, '_blank', 'noopener')
+    return
+  }
+  await invoke('embed_open', { url, ...b })
+}
+
+export async function embedSyncBounds(b: Bounds = embedBounds()): Promise<void> {
+  if (!inTauri()) return
+  try {
+    await invoke('embed_set_bounds', { ...b })
+  } catch {
+    /* 已经没有内嵌页了 */
+  }
+}
+
+export async function embedClose(): Promise<void> {
+  if (!inTauri()) return
+  try {
+    await invoke('embed_close')
+  } catch {
+    /* ignore */
+  }
+}
+
+export async function embedEval(js: string): Promise<void> {
+  if (!inTauri()) return
+  try {
+    await invoke('embed_eval', { js })
+  } catch {
+    /* ignore */
+  }
+}
+
+export const embedActions = {
+  back: () => embedEval('history.back()'),
+  reload: () => embedEval('location.reload()'),
 }
 
 /* ------------------------------------------------------------------ 快捷磁贴 */
 
-const KEY = 'miralite.browser.tiles.v1'
+const KEY = 'miralite.browser.tiles.v2'
 
 export interface Tile {
   id: string
@@ -37,17 +94,14 @@ export interface Tile {
 }
 
 const DEFAULT_TILES: Tile[] = [
+  { id: 't_qq', name: '腾讯视频', url: 'https://v.qq.com', color: '#00a4ff' },
+  { id: 't_iqiyi', name: '爱奇艺', url: 'https://www.iqiyi.com', color: '#00be06' },
+  { id: 't_youku', name: '优酷', url: 'https://www.youku.com', color: '#1ba5e0' },
+  { id: 't_mgtv', name: '芒果TV', url: 'https://www.mgtv.com', color: '#ff6a00' },
   { id: 't_bili', name: '哔哩哔哩', url: 'https://www.bilibili.com', color: '#fb7299' },
-  { id: 't_zhihu', name: '知乎', url: 'https://www.zhihu.com', color: '#0066ff' },
-  { id: 't_douban', name: '豆瓣', url: 'https://www.douban.com', color: '#2e963b' },
-  { id: 't_github', name: 'GitHub', url: 'https://github.com', color: '#8b949e' },
-  { id: 't_ytb', name: 'YouTube', url: 'https://www.youtube.com', color: '#ff0033' },
-  { id: 't_taobao', name: '淘宝', url: 'https://www.taobao.com', color: '#ff5000' },
-  { id: 't_weibo', name: '微博', url: 'https://weibo.com', color: '#e6162d' },
-  { id: 't_tmdb', name: 'TMDB', url: 'https://www.themoviedb.org', color: '#01b4e4' },
 ]
 
-const TILE_COLORS = ['#0078d4', '#fb7299', '#0066ff', '#2e963b', '#8b949e', '#ff5000', '#e6162d', '#01b4e4']
+const TILE_COLORS = ['#00a4ff', '#00be06', '#1ba5e0', '#ff6a00', '#fb7299', '#8b949e', '#e6162d']
 
 function loadTiles(): Tile[] {
   try {
@@ -115,7 +169,6 @@ export function normalizeInput(raw: string): string {
   const s = raw.trim()
   if (!s) return ''
   if (/^https?:\/\//i.test(s)) return s
-  // example.com / a.b.cn/path 这类直接当网址
   if (/^[\w-]+(\.[\w-]+)+(\/\S*)?$/.test(s)) return `https://${s}`
   return SEARCH_ENGINE.build(s)
 }

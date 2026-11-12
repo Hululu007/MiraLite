@@ -1,8 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Plus, Puzzle, RotateCcw, Search, Settings2, X } from 'lucide-react'
 import {
-  hasApp,
+  ArrowLeft,
+  CornerUpLeft,
+  ExternalLink,
+  Plus,
+  Puzzle,
+  RotateCcw,
+  Search,
+  Settings2,
+  X,
+} from 'lucide-react'
+import { inTauri } from '../lib/cat'
+import {
+  embedActions,
+  embedClose,
+  embedOpen,
+  embedSyncBounds,
   normalizeInput,
   openUrl,
   tileActions,
@@ -39,18 +53,18 @@ function greet(h: number): string {
 function TileCard({
   tile,
   editing,
-  browser,
+  onOpen,
   onRemove,
 }: {
   tile: Tile
   editing: boolean
-  browser: string | null
+  onOpen: () => void
   onRemove: () => void
 }) {
   return (
     <div className="group relative flex flex-col items-center gap-2">
       <button
-        onClick={() => void openUrl(tile.url, browser)}
+        onClick={onOpen}
         title={tile.url}
         className="glass-panel flex h-[72px] w-[72px] items-center justify-center rounded-2xl text-[24px] font-semibold transition hover:-translate-y-0.5 hover:shadow-[0_14px_34px_-16px_rgba(0,0,0,0.9)]"
         style={{ color: tile.color }}
@@ -80,33 +94,29 @@ export default function BrowserPage() {
   const [draftName, setDraftName] = useState('')
   const [draftUrl, setDraftUrl] = useState('')
   const [now, setNow] = useState(() => new Date())
-  const [edgeOk, setEdgeOk] = useState(false)
-  const [useEdge, setUseEdge] = useState(false)
+  const [site, setSite] = useState<{ name: string; url: string } | null>(null)
+  const siteRef = useRef<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
-
-  // 本机装了 Edge 才把链接丢给它，否则走默认浏览器
-  useEffect(() => {
-    let alive = true
-    void hasApp('Microsoft Edge').then((ok) => {
-      if (!alive) return
-      setEdgeOk(ok)
-      setUseEdge(ok)
-    })
-    return () => {
-      alive = false
-    }
-  }, [])
-
-  const target = useEdge && edgeOk ? 'Microsoft Edge' : null
 
   useEffect(() => {
     const t = window.setInterval(() => setNow(new Date()), 30_000)
     return () => window.clearInterval(t)
   }, [])
 
-  // 进来就能直接打字搜索
   useEffect(() => {
     inputRef.current?.focus()
+  }, [])
+
+  // 窗口尺寸变化时把原生视图重新贴合内容区；离开本页则收掉内嵌页
+  useEffect(() => {
+    const onResize = () => {
+      if (siteRef.current) void embedSyncBounds()
+    }
+    window.addEventListener('resize', onResize)
+    return () => {
+      window.removeEventListener('resize', onResize)
+      void embedClose()
+    }
   }, [])
 
   const dateText = useMemo(
@@ -114,12 +124,25 @@ export default function BrowserPage() {
     [now],
   )
 
+  /** 站点一律在本 app 内打开（child webview），非 Tauri 预览环境退回新标签页 */
+  function openSite(name: string, url: string) {
+    siteRef.current = url
+    setSite({ name, url })
+    void embedOpen(url)
+  }
+
+  function closeSite() {
+    siteRef.current = null
+    setSite(null)
+    void embedClose()
+  }
+
   function submit(e: React.FormEvent) {
     e.preventDefault()
     const url = normalizeInput(q)
     if (!url) return
-    void openUrl(url, target)
     setQ('')
+    openSite(url.replace(/^https?:\/\//, '').replace(/\/.*$/, '') || SEARCH_ENGINE.name, url)
   }
 
   function addTile(e: React.FormEvent) {
@@ -132,7 +155,7 @@ export default function BrowserPage() {
   }
 
   return (
-    <div className="relative -m-3 h-[calc(100%+24px)] overflow-y-auto">
+    <div className="relative -m-3 h-[calc(100%+24px)] overflow-hidden">
       {/* 背景 */}
       <div
         className="pointer-events-none absolute inset-0 transition-[background] duration-500"
@@ -140,20 +163,46 @@ export default function BrowserPage() {
         aria-hidden="true"
       />
 
-      <div className="relative flex min-h-full flex-col items-center px-10 pb-10 pt-6">
+      {/* 内嵌站点时的工具条（原生视图盖不到这一条） */}
+      {site && (
+        <div className="fixed left-[86px] right-3 top-[76px] z-20 flex h-10 items-center gap-1.5">
+          <button
+            onClick={closeSite}
+            className="glass-btn flex h-8 items-center gap-1.5 rounded-full px-3 text-[11.5px] text-fg/80 hover:text-gold"
+          >
+            <CornerUpLeft size={12} /> 返回
+          </button>
+          <button
+            onClick={() => void embedActions.back()}
+            title="上一页"
+            className="glass-btn flex h-8 w-8 items-center justify-center rounded-full text-fg/70"
+          >
+            <ArrowLeft size={13} />
+          </button>
+          <button
+            onClick={() => void embedActions.reload()}
+            title="刷新"
+            className="glass-btn flex h-8 items-center rounded-full px-3 text-[11px] text-fg/70"
+          >
+            刷新
+          </button>
+          <span className="mx-1 truncate text-[11.5px] text-fg/55">{site.name}</span>
+          <button
+            onClick={() => void openUrl(site.url)}
+            title="改用系统浏览器打开"
+            className="ml-auto glass-btn flex h-8 items-center gap-1.5 rounded-full px-3 text-[11px] text-fg/60"
+          >
+            <ExternalLink size={11} /> 外部打开
+          </button>
+        </div>
+      )}
+
+      <div
+        className="relative flex h-full flex-col items-center overflow-y-auto px-10 pb-10 pt-6"
+        style={site ? { visibility: 'hidden' } : undefined}
+      >
         {/* 右上工具条 */}
         <div className="mb-10 flex w-full items-center justify-end gap-1.5">
-          {edgeOk && (
-            <button
-              onClick={() => setUseEdge((v) => !v)}
-              title="用 Microsoft Edge 打开链接"
-              className={`glass-btn flex h-8 items-center gap-1.5 rounded-full px-3 text-[11px] ${
-                useEdge ? 'text-sky-300' : 'text-fg/70'
-              }`}
-            >
-              <span className="text-[10px]">◍</span> Edge {useEdge ? '已启用' : '已关闭'}
-            </button>
-          )}
           <button
             onClick={() => setTheme((t) => (t + 1) % THEMES.length)}
             title={`背景：${THEMES[theme].name}`}
@@ -163,7 +212,6 @@ export default function BrowserPage() {
           </button>
           <button
             onClick={() => setEditing((v) => !v)}
-            title="整理快捷方式"
             className={`glass-btn flex h-8 items-center gap-1.5 rounded-full px-3 text-[11px] ${
               editing ? 'text-gold' : 'text-fg/70'
             }`}
@@ -213,8 +261,7 @@ export default function BrowserPage() {
             </button>
           </form>
           <div className="mt-2 text-[10.5px] text-fg/40">
-            搜索走 {SEARCH_ENGINE.name}，外部链接用
-            {target ? ` ${target} ` : '系统默认浏览器'}打开
+            搜索走 {SEARCH_ENGINE.name}，站点都在 app 内打开
           </div>
         </div>
 
@@ -238,7 +285,7 @@ export default function BrowserPage() {
                 key={t.id}
                 tile={t}
                 editing={editing}
-                browser={target}
+                onOpen={() => openSite(t.name, t.url)}
                 onRemove={() => tileActions.remove(t.id)}
               />
             ))}
@@ -254,7 +301,10 @@ export default function BrowserPage() {
           </div>
 
           {adding && (
-            <form onSubmit={addTile} className="glass-panel mt-5 flex flex-wrap items-center gap-2 rounded-xl px-3 py-2.5">
+            <form
+              onSubmit={addTile}
+              className="glass-panel mt-5 flex flex-wrap items-center gap-2 rounded-xl px-3 py-2.5"
+            >
               <input
                 value={draftName}
                 onChange={(e) => setDraftName(e.target.value)}
@@ -264,7 +314,7 @@ export default function BrowserPage() {
               <input
                 value={draftUrl}
                 onChange={(e) => setDraftUrl(e.target.value)}
-                placeholder="网址，如 example.com"
+                placeholder="网址，如 v.qq.com"
                 className="glass-input h-8 min-w-[200px] flex-1 rounded-md px-2.5 text-[11.5px] text-fg"
               />
               <button
@@ -282,6 +332,12 @@ export default function BrowserPage() {
                 取消
               </button>
             </form>
+          )}
+
+          {!inTauri() && (
+            <div className="mt-6 text-[10.5px] text-fg/35">
+              浏览器预览环境下快捷方式会开新标签页；打包后的 app 里是页面内嵌。
+            </div>
           )}
         </div>
       </div>

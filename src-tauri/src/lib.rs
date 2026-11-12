@@ -1,4 +1,5 @@
 mod cat;
+mod embed;
 mod stream_proxy;
 mod sys;
 mod tmdb;
@@ -32,7 +33,12 @@ pub fn run() {
       tmdb::tmdb_test,
       tmdb::tmdb_rankings,
       sys::open_url,
-      sys::has_app
+      sys::has_app,
+      embed::embed_open,
+      embed::embed_set_bounds,
+      embed::embed_close,
+      embed::embed_eval,
+      embed::embed_exists
     ])
     .run(tauri::generate_context!())
     .expect("error while building tauri application");
