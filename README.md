@@ -26,6 +26,11 @@
 
 <br>
 
+![last commit](https://img.shields.io/github/last-commit/Simqiqi/MiraLite?style=for-the-badge&label=last%20commit)
+![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=for-the-badge)
+
+<br>
+
 [项目简介](#项目简介) · [这一版做了什么](#这一版做了什么) · [完整功能](#完整功能) · [获取与运行](#获取与运行) · [技术说明](#技术说明) · [合规声明](#合规声明)
 
 </div>

@@ -26,6 +26,11 @@
 
 <br>
 
+![last commit](https://img.shields.io/github/last-commit/Simqiqi/MiraLite?style=for-the-badge&label=last%20commit)
+![PRs welcome](https://img.shields.io/badge/PRs-welcome-brightgreen?style=for-the-badge)
+
+<br>
+
 [Overview](#overview) · [What's in this release](#whats-in-this-release) · [Features](#features) · [Build & Run](#build--run) · [Technical Notes](#technical-notes) · [Compliance](#compliance)
 
 </div>
