@@ -43,6 +43,8 @@
 
 内置 CAT/TVBox spider 引擎，可直接浏览、搜索并播放聚合站点的影视资源；影视线索来自 TMDB，实际播放仍由用户自行连接的来源提供。
 
+推荐使用猫源   https://9280.kstore.vip/cat/index.js.md5
+
 <!-- 截图就位后取消注释，把图片放到 resources/screenshots/ 下即可
 <div align="center">
 
