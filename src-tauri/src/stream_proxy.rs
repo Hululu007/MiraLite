@@ -61,6 +61,13 @@ fn extra_headers(raw: Option<&str>) -> ReqHeaderMap {
     out
 }
 
+/// 按 URL 判断是否播放列表（后缀判断，不依赖上游 Content-Type）
+fn is_playlist_url(u: &str) -> bool {
+    let lower = u.to_ascii_lowercase();
+    let path = lower.split('?').next().unwrap_or(&lower);
+    path.ends_with(".m3u8") || path.ends_with(".m3u")
+}
+
 fn origin_of(u: &str) -> String {
     match url::Url::parse(u) {
         Ok(p) => format!("{}://{}/", p.scheme(), p.host_str().unwrap_or("")),
@@ -170,11 +177,19 @@ async fn stream_handler(Query(q): Query<ProxyQ>, headers: HeaderMap) -> Response
         }
     }
 
-    let mut rb = client.get(&target).headers(req_headers);
+    let mut rb = client.get(&target).headers(req_headers.clone());
 
-    // 透传 Range，保证能拖进度条（客户端 Range 优先；extra_headers 已排除 range）
-    if let Some(r) = headers.get(header::RANGE).and_then(|v| v.to_str().ok()) {
-        rb = rb.header(reqwest::header::RANGE, r.to_string());
+    // 透传 Range，保证能拖进度条（客户端 Range 优先；extra_headers 已排除 range）。
+    // 但播放列表绝对不能带 Range：WKWebView / AVFoundation 取 m3u8 时会先发
+    // `Range: bytes=0-1` 做类型探测，若把 Range 透传给上游，上游返回 206 只剩 1 个字节，
+    // 这里读到的正文不含 #EXTM3U 就会回 502，原生 HLS 直接 SRC_NOT_SUPPORTED（黑屏转圈）。
+    let mut sent_range: Option<String> = None;
+    let likely_playlist = is_playlist_url(&target);
+    if !likely_playlist {
+        if let Some(r) = headers.get(header::RANGE).and_then(|v| v.to_str().ok()) {
+            sent_range = Some(r.to_string());
+            rb = rb.header(reqwest::header::RANGE, r.to_string());
+        }
     }
 
     let resp = match rb.send().await {
@@ -219,10 +234,18 @@ async fn stream_handler(Query(q): Query<ProxyQ>, headers: HeaderMap) -> Response
         .header(header::CACHE_CONTROL, "no-store");
 
     if is_playlist {
-        let body = match resp.text().await {
+        let mut body = match resp.text().await {
             Ok(t) => t,
             Err(e) => return (StatusCode::BAD_GATEWAY, format!("读播放列表失败: {e}")).into_response(),
         };
+        // 兜底：URL 无 .m3u8 后缀、判定晚了一步，正文可能只是 Range 片段，重拉全文
+        if !body.contains("#EXTM3U") && sent_range.is_some() {
+            if let Ok(r2) = client.get(&target).headers(req_headers).send().await {
+                if let Ok(t2) = r2.text().await {
+                    body = t2;
+                }
+            }
+        }
         if !body.contains("#EXTM3U") {
             return (StatusCode::BAD_GATEWAY, "上游不是 m3u8").into_response();
         }
