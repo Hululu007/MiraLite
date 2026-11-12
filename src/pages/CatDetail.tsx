@@ -308,7 +308,7 @@ export default function CatDetailPage() {
                 <Search size={12} /> 去其它站点搜这部片
               </button>
               <button
-                onClick={() => navigate('/userscript')}
+                onClick={() => navigate('/userscript/manage')}
                 className="glass-btn inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-[11.5px] text-muted hover:text-gold"
               >
                 用脚本解析网页

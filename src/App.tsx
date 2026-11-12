@@ -10,7 +10,6 @@ import CatDetailPage from './pages/CatDetail'
 import PlayerPage from './pages/Player'
 import DetailPage from './pages/Detail'
 import SearchPage from './pages/Search'
-import BrowserPage from './pages/Browser'
 import UserscriptPage from './pages/Userscript'
 import SettingsPage from './pages/Settings'
 
@@ -27,7 +26,6 @@ export default function App() {
         <Route path="/cat/item" element={<CatDetailPage />} />
         <Route path="/item/:id" element={<DetailPage />} />
         <Route path="/search" element={<SearchPage />} />
-        <Route path="/userscript" element={<BrowserPage />} />
         <Route path="/userscript/manage" element={<UserscriptPage />} />
         <Route path="/settings" element={<SettingsPage />} />
       </Route>

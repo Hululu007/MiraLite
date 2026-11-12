@@ -1,11 +1,10 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
-import { Clapperboard, Compass, Home, Search, Settings2 } from 'lucide-react'
+import { Clapperboard, Home, Search, Settings2 } from 'lucide-react'
 import { useEffect, useRef, useState } from 'react'
 
 const navItems = [
   { to: '/', label: '首页', icon: Home },
   { to: '/chase', label: '追剧', icon: Clapperboard },
-  { to: '/userscript', label: '浏览', icon: Compass },
 ]
 
 export default function Shell() {

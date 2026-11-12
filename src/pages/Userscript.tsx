@@ -298,7 +298,7 @@ export default function UserscriptPage() {
             共 {scripts.length} 个 · 启用 {scripts.filter((s) => s.enabled).length}
           </span>
           <button
-            onClick={() => navigate('/userscript')}
+            onClick={() => navigate('/')}
             className="glass-chip flex items-center gap-1 rounded-md px-2 py-1 text-[11px] text-fg/75"
           >
             <CornerUpLeft size={11} /> 返回首页

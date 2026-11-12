@@ -6,6 +6,7 @@ import {
   ChevronRight,
   Loader2,
   Play,
+  Puzzle,
   RefreshCw,
   Search,
   Star,
@@ -393,6 +394,14 @@ export default function HomePage() {
 
   return (
     <div className="pb-16">
+      <button
+        onClick={() => navigate('/userscript/manage')}
+        title="用户脚本"
+        className="glass-btn fixed right-4 top-[72px] z-20 flex h-8 items-center gap-1.5 rounded-full px-3 text-[11px] text-fg/70 hover:text-gold"
+      >
+        <Puzzle size={12} /> 脚本
+      </button>
+
       {err && !groups && (
         <section className="glass-panel mx-10 mb-6 mt-6 rounded-2xl p-6">
           <div className="flex items-center gap-2 text-[13px] font-medium">
