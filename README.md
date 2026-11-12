@@ -9,7 +9,7 @@
 <br>
 
 ![status](https://img.shields.io/badge/status-开发预览-blue?style=for-the-badge)
-![license](https://img.shields.io/badge/license-待补充-lightgrey?style=for-the-badge)
+![license](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
 ![stars](https://img.shields.io/github/stars/Simqiqi/MiraLite?style=for-the-badge&color=yellow)
 
 <br>
@@ -167,4 +167,4 @@ catPlay() → { url, header }
 
 ## 许可证
 
-仓库暂未添加 `LICENSE` 文件。开源分发前建议先补一份许可证（如 MIT 或 AGPL-3.0），并在上方徽章里替换 `license-待补充`。
+本项目采用 [MIT](LICENSE) 许可证，可自由使用、修改与分发，保留版权与许可声明即可。

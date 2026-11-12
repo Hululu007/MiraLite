@@ -9,7 +9,7 @@
 <br>
 
 ![status](https://img.shields.io/badge/status-dev%20preview-blue?style=for-the-badge)
-![license](https://img.shields.io/badge/license-unset-lightgrey?style=for-the-badge)
+![license](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
 ![stars](https://img.shields.io/github/stars/Simqiqi/MiraLite?style=for-the-badge&color=yellow)
 
 <br>
@@ -168,4 +168,4 @@ This project ships no content sources of its own. It is a client that reads sour
 
 ## License
 
-The repository does not include a `LICENSE` file yet. Before distributing, add a license (MIT or AGPL-3.0, for example) and replace the `license-unset` badge above.
+Released under the [MIT](LICENSE) license — free to use, modify and redistribute, provided the copyright and permission notice are kept.
