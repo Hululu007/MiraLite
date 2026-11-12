@@ -215,9 +215,21 @@ export default function UserscriptPage() {
     window.setTimeout(() => setMsg(''), 2600)
   }
 
-  function commit() {
-    if (!draft.trim()) return
-    const parsed = editing ? { ...parseUserScript(draft), id: editing.id } : parseUserScript(draft)
+  async function commit() {
+    let text = draft
+    if (!text.trim()) return
+    let source: UserScript['source'] = 'paste'
+    // 贴的是脚本直链（如 jsdelivr / greasyfork 原始链接）时先拉回原文，别把链接当代码存
+    if (/^https?:\/\/\S+$/.test(text.trim()) && !text.includes('==UserScript==')) {
+      try {
+        text = await fetchPage(text.trim())
+        source = 'url'
+      } catch (e) {
+        notice(`拉取脚本失败：${e instanceof Error ? e.message : String(e)}`)
+        return
+      }
+    }
+    const parsed = editing ? { ...parseUserScript(text), id: editing.id } : parseUserScript(text, source)
     scriptActions.add(parsed)
     setDraft('')
     setEditing(null)

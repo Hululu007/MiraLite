@@ -41,12 +41,21 @@ export function embedBounds(): Bounds {
   }
 }
 
-export async function embedOpen(url: string, b: Bounds = embedBounds()): Promise<void> {
+export async function embedOpen(
+  url: string,
+  b: Bounds = embedBounds(),
+  scripts: string[] = [],
+): Promise<number> {
   if (!inTauri()) {
     window.open(url, '_blank', 'noopener')
-    return
+    return 0
   }
-  await invoke('embed_open', { url, ...b })
+  try {
+    return (await invoke('embed_open', { url, ...b, scripts })) as number
+  } catch (e) {
+    console.warn('[MiraLite] 内嵌网页失败', e)
+    return 0
+  }
 }
 
 export async function embedSyncBounds(b: Bounds = embedBounds()): Promise<void> {

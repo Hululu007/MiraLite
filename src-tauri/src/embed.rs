@@ -1,5 +1,6 @@
 //! 应用内嵌网页：在主窗口里挂一个 child webview，用原生视图承载目标站点，
 //! 这样点快捷方式不用跳系统浏览器，全部留在 MiraLite 自己的界面里。
+//! 用户脚本通过 initialization_script 在页面最早时机注入，随后也能用 embed_eval 补跑。
 
 use tauri::{LogicalPosition, LogicalSize, WebviewBuilder, WebviewUrl, Window};
 
@@ -22,6 +23,7 @@ fn find(window: &Window) -> Option<tauri::Webview> {
 }
 
 /// 打开（或换到）内嵌网页，位置尺寸用窗口内逻辑坐标。
+/// `scripts` 是注入到页面里的初始化脚本（用户脚本包），返回注入条数。
 #[tauri::command]
 pub async fn embed_open(
     window: Window,
@@ -30,20 +32,36 @@ pub async fn embed_open(
     y: f64,
     w: f64,
     h: f64,
-) -> Result<(), String> {
-    let target = parse(&url)?;
-    if let Some(old) = find(&window) {
+    scripts: Vec<String>,
+) -> Result<usize, String> {
+    open(&window, &url, x, y, w, h, &scripts)
+}
+
+/// 打开内嵌网页并注入初始化脚本（供 command 与内部自测复用）。
+pub fn open(
+    window: &Window,
+    url: &str,
+    x: f64,
+    y: f64,
+    w: f64,
+    h: f64,
+    scripts: &[String],
+) -> Result<usize, String> {
+    let target = parse(url)?;
+    if let Some(old) = find(window) {
         let _ = old.close();
     }
     let (w, h) = pad(w, h);
+
+    let mut builder = WebviewBuilder::new(LABEL, WebviewUrl::External(target));
+    for s in scripts.iter().filter(|s| !s.trim().is_empty()) {
+        builder = builder.initialization_script(s);
+    }
+
     window
-        .add_child(
-            WebviewBuilder::new(LABEL, WebviewUrl::External(target)),
-            LogicalPosition::new(x, y),
-            LogicalSize::new(w, h),
-        )
+        .add_child(builder, LogicalPosition::new(x, y), LogicalSize::new(w, h))
         .map_err(|e| format!("内嵌网页失败: {e}"))?;
-    Ok(())
+    Ok(scripts.iter().filter(|s| !s.trim().is_empty()).count())
 }
 
 /// 跟着窗口尺寸重排；内嵌页不存在时静默返回。
@@ -66,7 +84,7 @@ pub fn embed_close(window: Window) -> Result<(), String> {
     Ok(())
 }
 
-/// 在内嵌页里跑一段 JS（后退 / 刷新 / 取当前地址都靠它）
+/// 在当前内嵌页里跑一段 JS（补注入脚本 / 后退 / 刷新 / 取地址都用它）
 #[tauri::command]
 pub fn embed_eval(window: Window, js: String) -> Result<(), String> {
     if let Some(v) = find(&window) {

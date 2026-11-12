@@ -115,11 +115,25 @@ function globToRegExp(glob: string): RegExp | null {
   return new RegExp(`^${escaped}$`, 'i')
 }
 
-export function matchesUrl(script: UserScript, url: string): boolean {
-  if (script.matches.some((p) => globToRegExp(p)?.test(url))) {
-    return !script.excludes.some((p) => globToRegExp(p)?.test(url))
+/** 站点地址的等价写法：「https://a.com」「https://a.com/」应视作同一页，@match 两种写法都能命中 */
+function urlVariants(url: string): string[] {
+  const base = url.split('#')[0]
+  const out = new Set<string>([url, base])
+  for (const u of [url, base]) {
+    out.add(u.endsWith('/') ? u.slice(0, -1) : u + '/')
   }
-  return false
+  return Array.from(out).filter(Boolean)
+}
+
+function testPattern(pattern: string, variants: string[]): boolean {
+  const re = globToRegExp(pattern)
+  return re ? variants.some((v) => re.test(v)) : false
+}
+
+export function matchesUrl(script: UserScript, url: string): boolean {
+  const variants = urlVariants(url)
+  if (!script.matches.some((p) => testPattern(p, variants))) return false
+  return !script.excludes.some((p) => testPattern(p, variants))
 }
 
 export function pickScripts(scripts: UserScript[], url: string): UserScript[] {
@@ -459,4 +473,70 @@ export async function probeWithScripts(url: string): Promise<ProbeResult> {
     }
   }
   return { matched: results.map((r) => r.scriptName), links, logs }
+}
+
+/* ------------------------------------------------- 注入到内嵌 webview（真实页面） */
+
+const GM_HEAD = [
+  'var META = __META__;',
+  'var PREFIX = "miralite.userscript.gm." + META.id + ".";',
+  'function readVal(k, d) { try { var r = localStorage.getItem(PREFIX + k); return r === null ? d : JSON.parse(r) } catch (e) { return d } }',
+  'window.GM_info = { script: { name: META.name, namespace: META.namespace, version: META.version, description: "", matches: [] }, scriptHandler: "MiraLite", version: "1.0", scriptMetaStr: "" };',
+  'window.GM_setValue = function (k, v) { try { localStorage.setItem(PREFIX + k, JSON.stringify(v)) } catch (e) {} };',
+  'window.GM_getValue = function (k, d) { return readVal(k, d) };',
+  'window.GM_deleteValue = function (k) { try { localStorage.removeItem(PREFIX + k) } catch (e) {} };',
+  'window.GM_listValues = function () { var out = []; try { for (var i = 0; i < localStorage.length; i++) { var key = localStorage.key(i); if (key && key.indexOf(PREFIX) === 0) out.push(key.slice(PREFIX.length)) } } catch (e) {} return out };',
+  'window.GM_addStyle = function (css) { var st = document.createElement("style"); st.textContent = css; (document.head || document.documentElement).appendChild(st); return st };',
+  'window.GM_log = function () { try { console.log.apply(console, ["[MiraLite]"].concat([].slice.call(arguments))) } catch (e) {} };',
+  'window.GM_notification = function (o) { try { console.log("[MiraLite]", (o && (o.title || o.text)) || "") } catch (e) {} };',
+  'window.GM_openInTab = function (u) { try { window.open(u, "_blank") } catch (e) {} };',
+  'window.GM_registerMenuCommand = function () {};',
+  'window.GM_xmlhttpRequest = function (d) {',
+  '  var ac = typeof AbortController !== "undefined" ? new AbortController() : null;',
+  '  var opt = { method: (d.method || "GET").toUpperCase(), headers: d.headers || {}, credentials: "include" };',
+  '  if (ac) opt.signal = ac.signal;',
+  '  if (d.data !== undefined && opt.method !== "GET") opt.body = d.data;',
+  '  fetch(d.url, opt).then(function (r) { return r.text().then(function (t) { return { r: r, t: t } }) })',
+  '    .then(function (x) { if (d.onload) d.onload({ status: x.r.status, statusText: x.r.statusText, readyState: 4, responseText: x.t, finalUrl: x.r.url, responseHeaders: "" }) })',
+  '    .catch(function (e) { if (d.onerror) d.onerror(e) });',
+  '  return { abort: function () { if (ac) ac.abort() } };',
+  '};',
+  'window.unsafeWindow = window;',
+].join('\n')
+
+/**
+ * 生成一段可直接丢进内嵌 webview 执行的 JS：GM_* 兼容层 + 用户脚本本体。
+ * 与浏览器里的 Tampermonkey 行为对齐（document-end 时机），脚本出错不影响其它脚本。
+ */
+export function buildInjectScript(s: UserScript): string {
+  const meta = JSON.stringify({
+    id: s.id,
+    name: s.name,
+    namespace: s.namespace ?? '',
+    version: s.version ?? '0.0.0',
+  })
+  return [
+    '(function () {',
+    '  try {',
+    GM_HEAD.replace('__META__', meta),
+    '    var RUN = function () {',
+    '      try {',
+    '        (function () {',
+    s.code,
+    '        }).call(window);',
+    '        console.log("[MiraLite] 脚本已执行: " + META.name);',
+    '      } catch (e) { console.warn("[MiraLite] 脚本出错: " + (e && e.message)); }',
+    '    };',
+    '    // 注入时机对齐 Tampermonkey 的 document-end：DOM 就绪后再跑脚本本体',
+    '    if (document.readyState === "loading") {',
+    '      document.addEventListener("DOMContentLoaded", RUN, { once: true });',
+    '    } else { RUN(); }',
+    '  } catch (e) { console.warn("[MiraLite] 脚本注入失败: " + (e && e.message)); }',
+    '})();',
+  ].join('\n')
+}
+
+/** 多个脚本拼成一个注入包，空数组返回空串（零注入开销） */
+export function buildInjectBundle(scripts: UserScript[]): string {
+  return scripts.map(buildInjectScript).join('\n;\n')
 }

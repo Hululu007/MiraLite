@@ -9,12 +9,15 @@ import {
   RotateCcw,
   Search,
   Settings2,
+  Zap,
   X,
 } from 'lucide-react'
 import { inTauri } from '../lib/cat'
+import { buildInjectBundle, pickScripts, useUserScripts } from '../lib/userscript'
 import {
   embedActions,
   embedClose,
+  embedEval,
   embedOpen,
   embedSyncBounds,
   normalizeInput,
@@ -94,7 +97,10 @@ export default function BrowserPage() {
   const [draftName, setDraftName] = useState('')
   const [draftUrl, setDraftUrl] = useState('')
   const [now, setNow] = useState(() => new Date())
+  const scripts = useUserScripts()
   const [site, setSite] = useState<{ name: string; url: string } | null>(null)
+  const [injected, setInjected] = useState(0)
+  const [toast, setToast] = useState('')
   const siteRef = useRef<string | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
 
@@ -124,17 +130,43 @@ export default function BrowserPage() {
     [now],
   )
 
-  /** 站点一律在本 app 内打开（child webview），非 Tauri 预览环境退回新标签页 */
+  /** 站点一律在本 app 内打开（child webview），并把匹配该站点的用户脚本一起注入 */
   function openSite(name: string, url: string) {
+    const hit = pickScripts(scripts, url)
+    const bundle = buildInjectBundle(hit)
     siteRef.current = url
     setSite({ name, url })
-    void embedOpen(url)
+    setInjected(hit.length)
+    void embedOpen(url, undefined, bundle ? [bundle] : []).then((n) => {
+      setInjected(n)
+      if (n > 0) flash(`已注入 ${n} 个用户脚本`)
+    })
   }
 
   function closeSite() {
     siteRef.current = null
     setSite(null)
+    setInjected(0)
     void embedClose()
+  }
+
+  /** 手动补跑一遍脚本：站内跳转后想再来一次、或刚导入了新脚本 */
+  function reinject() {
+    if (!site) return
+    const hit = pickScripts(scripts, site.url)
+    const bundle = buildInjectBundle(hit)
+    if (!bundle) {
+      flash('该站点没有匹配的用户脚本')
+      return
+    }
+    void embedEval(bundle)
+    setInjected(hit.length)
+    flash(`已重新注入 ${hit.length} 个脚本`)
+  }
+
+  function flash(text: string) {
+    setToast(text)
+    window.setTimeout(() => setToast(''), 2400)
   }
 
   function submit(e: React.FormEvent) {
@@ -187,10 +219,35 @@ export default function BrowserPage() {
             刷新
           </button>
           <span className="mx-1 truncate text-[11.5px] text-fg/55">{site.name}</span>
+          {toast && (
+            <span className="mr-1 rounded-full bg-black/55 px-2.5 py-1 text-[10.5px] text-emerald-300">
+              {toast}
+            </span>
+          )}
+          <button
+            onClick={() => navigate('/userscript/manage')}
+            title="管理用户脚本"
+            className="ml-auto glass-btn flex h-8 w-8 items-center justify-center rounded-full text-fg/50 hover:text-fg/85"
+          >
+            <Puzzle size={12} />
+          </button>
+          <button
+            onClick={reinject}
+            title={
+              injected > 0
+                ? `已注入 ${injected} 个脚本，点一下重跑`
+                : '当前站点没有匹配的脚本，点一下去导入'
+            }
+            className={`glass-btn flex h-8 items-center gap-1.5 rounded-full px-3 text-[11px] ${
+              injected > 0 ? 'text-emerald-300' : 'text-fg/55'
+            }`}
+          >
+            <Zap size={11} /> 脚本 {injected}
+          </button>
           <button
             onClick={() => void openUrl(site.url)}
             title="改用系统浏览器打开"
-            className="ml-auto glass-btn flex h-8 items-center gap-1.5 rounded-full px-3 text-[11px] text-fg/60"
+            className="glass-btn flex h-8 items-center gap-1.5 rounded-full px-3 text-[11px] text-fg/60"
           >
             <ExternalLink size={11} /> 外部打开
           </button>
@@ -262,6 +319,8 @@ export default function BrowserPage() {
           </form>
           <div className="mt-2 text-[10.5px] text-fg/40">
             搜索走 {SEARCH_ENGINE.name}，站点都在 app 内打开
+            {scripts.filter((s) => s.enabled).length > 0 &&
+              ` · 已装 ${scripts.filter((s) => s.enabled).length} 个用户脚本`}
           </div>
         </div>
 
